@@ -38,8 +38,9 @@ Subcommands: `serve`, `registry lint`, `token inspect`, `token verify`,
 
 `serve` loads a 0600 signing key or keyring (`active_kid` + `keys`),
 rejects group/world-readable key files, optional `-tls-cert`/`-tls-key`,
-and `-rate-limit` (default 30/s). SIGHUP reloads registry and signing
-material; an invalid file keeps the previous snapshot.
+`-rate-limit` (default 30/s), and a required `-replay-log`. SIGHUP
+reloads registry and signing material as one identity snapshot; an
+invalid file keeps the previous snapshot.
 
 A deny is an authorization result (HTTP 400 with `error` / `error_description`
 and a reason code), not a process failure. Process failure is reserved for

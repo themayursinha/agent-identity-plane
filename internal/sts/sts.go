@@ -75,32 +75,56 @@ type Config struct {
 	limiter *tokenBucket
 }
 
-// SetRegistry replaces the live registry. Invalid callers should not
-// invoke this; Reloader.Reload fail-closes by keeping the previous value.
+type identitySnap struct {
+	Registry  *registry.Registry
+	Signer    *token.Keyring
+	Attestor  attest.WorkloadAttestor
+	IdPKeys   token.JWKS
+	IdPIssuer string
+}
+
+// SetRegistry replaces the live registry. Reloader must not combine this
+// with ReplaceKeyring; use installIdentity so one request never observes
+// a torn registry/keyring pair.
 func (c *Config) SetRegistry(r *registry.Registry) {
-	if c == nil || r == nil {
-		return
-	}
-	c.live.Lock()
-	c.Registry = r
-	c.live.Unlock()
+	c.installIdentity(r, nil)
 }
 
 // ReplaceKeyring swaps signing material in place.
 func (c *Config) ReplaceKeyring(kr *token.Keyring) error {
-	if c == nil || kr == nil || kr.ActiveKID() == "" {
+	if kr == nil || kr.ActiveKID() == "" {
 		return token.ErrInvalidKey
 	}
-	c.live.Lock()
-	c.Signer = kr
-	c.live.Unlock()
+	c.installIdentity(nil, kr)
 	return nil
 }
 
-func (c *Config) snapshot() (*registry.Registry, *token.Keyring) {
+// installIdentity publishes registry and/or keyring under one lock so
+// Exchange, /jwks.json, and /readyz observe a single snapshot.
+func (c *Config) installIdentity(reg *registry.Registry, kr *token.Keyring) {
+	if c == nil {
+		return
+	}
+	c.live.Lock()
+	if reg != nil {
+		c.Registry = reg
+	}
+	if kr != nil {
+		c.Signer = kr
+	}
+	c.live.Unlock()
+}
+
+func (c *Config) snapshot() identitySnap {
 	c.live.RLock()
 	defer c.live.RUnlock()
-	return c.Registry, c.Signer
+	return identitySnap{
+		Registry:  c.Registry,
+		Signer:    c.Signer,
+		Attestor:  c.Attestor,
+		IdPKeys:   c.IdPKeys,
+		IdPIssuer: c.IdPIssuer,
+	}
 }
 
 func (c *Config) now() time.Time {
@@ -187,8 +211,8 @@ func (c *Config) Exchange(ctx context.Context, req ExchangeRequest) ExchangeResu
 }
 
 func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
-	reg, signer := c.snapshot()
-	if signer == nil || reg == nil || c.Attestor == nil || c.Issuer == "" {
+	snap := c.snapshot()
+	if snap.Signer == nil || snap.Registry == nil || snap.Attestor == nil || c.Issuer == "" {
 		return deny(ReasonInvalidRequest, "invalid_request", "sts not configured")
 	}
 	if req.GrantType != "" && req.GrantType != GrantTokenExchange {
@@ -204,18 +228,18 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 		return deny(ReasonInvalidRequest, "invalid_request", "requested_token_type")
 	}
 
-	wl, err := c.Attestor.Attest(ctx, req.ActorToken)
+	wl, err := snap.Attestor.Attest(ctx, req.ActorToken)
 	if err != nil {
 		return deny(ReasonInvalidActorToken, "invalid_request", err.Error())
 	}
 
 	now := c.now()
-	agent, err := reg.Authorize(req.AgentID, wl.ID, req.Audience, now)
+	agent, err := snap.Registry.Authorize(req.AgentID, wl.ID, req.Audience, now)
 	if err != nil {
 		return deny(mapRegistryErr(err), "access_denied", err.Error())
 	}
 
-	sub, fromSTS, err := c.verifySubject(req.SubjectToken, signer)
+	sub, fromSTS, err := c.verifySubject(req.SubjectToken, snap)
 	if err != nil {
 		return deny(ReasonInvalidSubjectToken, "invalid_request", err.Error())
 	}
@@ -264,7 +288,7 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 
 	if fromSTS {
 		if err := c.Replay.Consume(sub.Jti, sub.Exp); err != nil {
-			if errors.Is(err, ErrReplay) || errors.Is(err, errEmptyJTI) {
+			if errors.Is(err, ErrReplay) || errors.Is(err, errEmptyJTI) || errors.Is(err, ErrReplayUnavailable) {
 				return deny(ReasonReplayedToken, "invalid_grant", err.Error())
 			}
 			return deny(ReasonInvalidRequest, "server_error", err.Error())
@@ -290,7 +314,7 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 		claims.Purp = sub.Purp
 	}
 
-	raw, err := signer.SignClaims(claims)
+	raw, err := snap.Signer.SignClaims(claims)
 	if err != nil {
 		return deny(ReasonInvalidRequest, "server_error", err.Error())
 	}
@@ -305,17 +329,17 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 	}
 }
 
-func (c *Config) verifySubject(raw string, signer *token.Keyring) (token.Claims, bool, error) {
-	if signer != nil {
-		if _, claims, err := token.Verify(raw, signer.JWKS()); err == nil {
+func (c *Config) verifySubject(raw string, snap identitySnap) (token.Claims, bool, error) {
+	if snap.Signer != nil {
+		if _, claims, err := token.Verify(raw, snap.Signer.JWKS()); err == nil {
 			if claims.Iss != c.Issuer {
 				return token.Claims{}, false, token.ErrIssuerMismatch
 			}
 			return claims, true, nil
 		}
 	}
-	if _, claims, err := token.Verify(raw, c.IdPKeys); err == nil {
-		if c.IdPIssuer != "" && claims.Iss != c.IdPIssuer {
+	if _, claims, err := token.Verify(raw, snap.IdPKeys); err == nil {
+		if snap.IdPIssuer != "" && claims.Iss != snap.IdPIssuer {
 			return token.Claims{}, false, token.ErrIssuerMismatch
 		}
 		return claims, false, nil

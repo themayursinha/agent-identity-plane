@@ -101,12 +101,22 @@ func SingleAudience(aud string) (Audience, error) {
 	return Audience{aud}, nil
 }
 
-const defaultSkew = 30 * time.Second
+const ClockSkew = 30 * time.Second
+
+// ReplayUntil is the last unix second at which ValidateTime still accepts
+// exp (inclusive of ClockSkew). Consumed-token state must be retained
+// through this instant, not raw exp.
+func ReplayUntil(exp int64) int64 {
+	if exp <= 0 {
+		return 0
+	}
+	return exp + int64(ClockSkew/time.Second)
+}
 
 // ValidateTime checks exp/nbf against now with a small clock skew.
 func (c Claims) ValidateTime(now time.Time, skew time.Duration) error {
 	if skew <= 0 {
-		skew = defaultSkew
+		skew = ClockSkew
 	}
 	unix := now.Unix()
 	if c.Exp == 0 || unix > c.Exp+int64(skew.Seconds()) {

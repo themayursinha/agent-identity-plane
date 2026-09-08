@@ -123,6 +123,58 @@ func TestCheckSecretFileMode(t *testing.T) {
 	}
 }
 
+func TestParseSigningMaterialUnknownField(t *testing.T) {
+	k1 := mustKey(t, "sts-1")
+	raw, err := json.Marshal(k1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	m["extra"] = true
+	bad, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ParseSigningMaterial(bad); err == nil {
+		t.Fatal("unknown field must fail closed")
+	}
+	doc := map[string]any{"active_kid": "sts-1", "keys": []any{m}, "note": "nope"}
+	badRing, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ParseSigningMaterial(badRing); err == nil {
+		t.Fatal("unknown keyring field must fail closed")
+	}
+}
+
+func TestParseSigningMaterialTrailingJSON(t *testing.T) {
+	k1 := mustKey(t, "sts-1")
+	raw, err := json.Marshal(k1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = append(raw, []byte(`{"kid":"x"}`)...)
+	if _, _, err := ParseSigningMaterial(raw); err == nil {
+		t.Fatal("trailing json must fail closed")
+	}
+}
+
+func TestParseJWKSTrailingJSON(t *testing.T) {
+	kf := mustKey(t, "k1")
+	raw, err := kf.PublicJWKS().Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = append(raw, []byte(`{"keys":[]}`)...)
+	if _, err := ParseJWKS(raw); err == nil {
+		t.Fatal("trailing json must fail closed")
+	}
+}
+
 func TestLoadSigningFile(t *testing.T) {
 	kf := mustKey(t, "sts-1")
 	raw, err := json.MarshalIndent(kf, "", "  ")

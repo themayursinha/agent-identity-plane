@@ -1,12 +1,14 @@
 package sts_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/themayursinha/agent-identity-plane/internal/scenario"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
@@ -61,6 +63,106 @@ func TestKeyringOverlapOnSTS(t *testing.T) {
 	}
 	if h.KID != "sts-2" {
 		t.Fatalf("kid %s", h.KID)
+	}
+}
+
+func TestReplaySurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "replay.jsonl")
+	now := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	c1, err := sts.OpenReplayCache(path, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exp := now.Add(2 * time.Minute).Unix()
+	if err := c1.Consume("jti-restart", exp); err != nil {
+		t.Fatal(err)
+	}
+	if err := c1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	c2, err := sts.OpenReplayCache(path, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c2.Close() })
+	if err := c2.Consume("jti-restart", exp); err != sts.ErrReplay {
+		t.Fatalf("got %v want ErrReplay", err)
+	}
+}
+
+func TestReplayRetainsClockSkewWindow(t *testing.T) {
+	now := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	cur := now
+	cache := sts.NewReplayCache(func() time.Time { return cur })
+	exp := now.Unix()
+	if err := cache.Consume("jti-skew", exp); err != nil {
+		t.Fatal(err)
+	}
+	cur = now.Add(token.ClockSkew)
+	if err := cache.Consume("jti-skew", exp); err != sts.ErrReplay {
+		t.Fatalf("still within skew, got %v", err)
+	}
+}
+
+func TestNilReplayFailsClosed(t *testing.T) {
+	w := testWorld(t)
+	w.STS.Replay = nil
+	user, _ := w.UserToken()
+	r1 := w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
+	if r1.ReasonCode != sts.ReasonOK {
+		t.Fatal(r1)
+	}
+	r2 := w.Exchange(scenario.Invest, scenario.WLInvest, r1.Token, scenario.Gateway, "mcp:github:pr")
+	if r2.ReasonCode != sts.ReasonReplayedToken {
+		t.Fatalf("nil replay cache must fail closed, got %s", r2.ReasonCode)
+	}
+}
+
+func TestReloadPublishesRegistryAndKeyringTogether(t *testing.T) {
+	w := testWorld(t)
+	dir := t.TempDir()
+	regPath := filepath.Join(dir, "registry.json")
+	keyPath := filepath.Join(dir, "keys.json")
+	if err := os.WriteFile(regPath, []byte(`{
+	  "version": 1,
+	  "agents": [
+	    {"id":"spiffe://example.test/agent/oncall","workloads":["spiffe://example.test/workload/oncall"],"audiences":["spiffe://example.test/agent/investigation"],"max_scopes":["mcp:github:pr"],"max_depth":4}
+	  ]
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	next, err := token.GenerateEd25519("sts-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := map[string]any{"active_kid": "sts-2", "keys": []any{w.STSKey, next}}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rel := sts.NewReloader(w.STS, regPath, keyPath)
+	if err := rel.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if w.STS.Signer.ActiveKID() != "sts-2" {
+		t.Fatalf("kid %s", w.STS.Signer.ActiveKID())
+	}
+	user, _ := w.UserToken()
+	res := w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
+	if res.ReasonCode != sts.ReasonOK {
+		t.Fatal(res.ReasonCode, res.ErrorDesc)
+	}
+	h, _, _, err := token.ParseUnverified(res.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.KID != "sts-2" {
+		t.Fatalf("minted kid %s", h.KID)
 	}
 }
 

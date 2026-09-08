@@ -43,8 +43,8 @@ func (c *Config) Handler() http.Handler {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		reg, signer := c.snapshot()
-		if reg == nil || signer == nil || signer.ActiveKID() == "" {
+		snap := c.snapshot()
+		if snap.Registry == nil || snap.Signer == nil || snap.Signer.ActiveKID() == "" {
 			http.Error(w, "not ready\n", http.StatusServiceUnavailable)
 			return
 		}
@@ -61,13 +61,13 @@ func (c *Config) Handler() http.Handler {
 		_, _ = fmt.Fprintf(w, "aip_sts_rate_limited_total %d\n", c.Metrics.RateLimited.Load())
 	})
 	mux.HandleFunc("GET /jwks.json", func(w http.ResponseWriter, r *http.Request) {
-		_, signer := c.snapshot()
+		snap := c.snapshot()
 		w.Header().Set("Content-Type", "application/json")
-		if signer == nil {
+		if snap.Signer == nil {
 			http.Error(w, `{"keys":[]}`, http.StatusServiceUnavailable)
 			return
 		}
-		b, _ := json.Marshal(signer.JWKS())
+		b, _ := json.Marshal(snap.Signer.JWKS())
 		_, _ = w.Write(b)
 	})
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {

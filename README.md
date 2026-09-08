@@ -109,7 +109,7 @@ CLI: `serve`, `registry lint`, `token inspect|verify`, `trace`, `keys generate`,
 - **Self-hosted:** single Go binary; standard library only
 - **Loopback by default:** `-listen` rejects `0.0.0.0` and `[::]`
 - **Honest SPIFFE claim:** JWT-SVID verification is JWKS-based and fixture-tested; this is not a live SPIRE / Workload API deployment
-- **v0.2 operability:** overlapping STS kids, `jti` replay at exchange, SIGHUP reload, optional TLS, `/readyz` + `/metrics`. Not a production identity plane.
+- **v0.2 operability:** overlapping STS kids, durable `jti` replay at exchange, atomic SIGHUP identity snapshot, optional TLS, `/readyz` + `/metrics`. Not a production identity plane.
 - **Not a host sandbox and not an MCP policy proxy**
 
 ## Documentation

@@ -43,17 +43,21 @@ Keyring (rotate without dropping in-flight tokens):
 2. Wait at least the mint TTL (default 120s).
 3. Remove the old key, `kill -HUP`.
 
-## Registry reload
+## Registry and key reload
 
-Replace the registry file atomically (`mv` into place), then `SIGHUP`.
-If the new document fails strict decode, the previous registry stays
-loaded and the process does not exit.
+Replace registry and/or signing files atomically (`mv` into place), then
+`SIGHUP`. Both documents are decoded first; then registry and keyring
+are published together. If either document fails strict decode, neither
+changes and the process does not exit.
 
 ## Replay
 
-STS-issued subject tokens are single-use at `/oauth/token`. Retry a hop
-with a new exchange from the previous (unconsumed) token, or from a
-first-hop IdP token. This is not an agent denylist.
+STS-issued subject tokens are single-use at `/oauth/token` for as long
+as `ValidateTime` would still accept them (`exp + 30s` skew). Consumed
+`jti` values are written to `-replay-log` (JSONL, mode 0600) before the
+mint, so a restart does not resurrect them. Retry a hop from a
+first-hop IdP token, not by replaying an STS subject token. This is not
+an agent denylist.
 
 ## Endpoints
 

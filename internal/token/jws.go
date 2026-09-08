@@ -317,11 +317,11 @@ func (j JWK) rsaPub() (*rsa.PublicKey, error) {
 	return &rsa.PublicKey{N: new(big.Int).SetBytes(nb), E: e}, nil
 }
 
-// ParseJWKS decodes a JWKS document. Unknown fields are ignored at this
-// layer; verification still fail-closes on unusable keys.
+// ParseJWKS decodes a JWKS document. Unknown JWK fields are ignored so
+// foreign IdP/SPIRE bundles can be used; trailing JSON is rejected.
 func ParseJWKS(raw []byte) (JWKS, error) {
 	var ks JWKS
-	if err := json.Unmarshal(raw, &ks); err != nil {
+	if err := decodeJSON(raw, &ks); err != nil {
 		return JWKS{}, err
 	}
 	return ks, nil

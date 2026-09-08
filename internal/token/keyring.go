@@ -107,20 +107,17 @@ type keyringFile struct {
 }
 
 // ParseSigningMaterial accepts a single KeyFile or a keyring document
-// with active_kid and keys.
+// with active_kid and keys. Owned signing documents are strict-decoded
+// (unknown fields and trailing JSON fail closed).
 func ParseSigningMaterial(raw []byte) (activeKID string, keys []*KeyFile, err error) {
-	var peek struct {
-		ActiveKID string          `json:"active_kid"`
-		Keys      json.RawMessage `json:"keys"`
-		KID       string          `json:"kid"`
-	}
-	if err := json.Unmarshal(raw, &peek); err != nil {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &probe); err != nil {
 		return "", nil, fmt.Errorf("%w: %v", ErrInvalidKey, err)
 	}
-	if len(peek.Keys) > 0 {
+	if _, ok := probe["keys"]; ok {
 		var wrap keyringFile
-		if err := json.Unmarshal(raw, &wrap); err != nil {
-			return "", nil, fmt.Errorf("%w: %v", ErrInvalidKey, err)
+		if err := decodeStrict(raw, &wrap); err != nil {
+			return "", nil, err
 		}
 		if wrap.ActiveKID == "" {
 			return "", nil, fmt.Errorf("%w: active_kid required", ErrInvalidKey)
@@ -133,8 +130,8 @@ func ParseSigningMaterial(raw []byte) (activeKID string, keys []*KeyFile, err er
 		return wrap.ActiveKID, out, nil
 	}
 	var kf KeyFile
-	if err := json.Unmarshal(raw, &kf); err != nil {
-		return "", nil, fmt.Errorf("%w: %v", ErrInvalidKey, err)
+	if err := decodeStrict(raw, &kf); err != nil {
+		return "", nil, err
 	}
 	if kf.KID == "" {
 		return "", nil, fmt.Errorf("%w: kid required", ErrInvalidKey)
@@ -149,10 +146,10 @@ func CheckSecretFileMode(path string) error {
 		return err
 	}
 	if !fi.Mode().IsRegular() {
-		return fmt.Errorf("%w: signing key is not a regular file", ErrInvalidKey)
+		return fmt.Errorf("%w: %s is not a regular file", ErrInvalidKey, path)
 	}
 	if perm := fi.Mode().Perm(); perm&0o077 != 0 {
-		return fmt.Errorf("%w: signing key %s must not be group/world-readable (mode %o)", ErrInvalidKey, path, perm)
+		return fmt.Errorf("%w: %s must not be group/world-readable (mode %o)", ErrInvalidKey, path, perm)
 	}
 	return nil
 }

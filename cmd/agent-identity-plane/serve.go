@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -28,6 +29,7 @@ func cmdServe(args []string) error {
 	idpIss := fs.String("idp-issuer", "", "expected IdP iss claim")
 	spiffePath := fs.String("spiffe-jwks", "", "optional JWT-SVID JWKS bundle")
 	auditPath := fs.String("audit-log", "", "hash-linked JSONL audit path (required)")
+	replayPath := fs.String("replay-log", "", "durable consumed-jti JSONL (required; survives restart)")
 	ttl := fs.Duration("ttl", 120*time.Second, "minted token TTL")
 	tlsCert := fs.String("tls-cert", "", "PEM certificate for HTTPS (requires -tls-key)")
 	tlsKey := fs.String("tls-key", "", "PEM private key for HTTPS (requires -tls-cert)")
@@ -35,8 +37,8 @@ func cmdServe(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *regPath == "" || *keyPath == "" || *wlPath == "" || *idpPath == "" || *auditPath == "" {
-		return fmt.Errorf("serve requires -registry, -signing-key, -workload-keys, -idp-jwks, and -audit-log")
+	if *regPath == "" || *keyPath == "" || *wlPath == "" || *idpPath == "" || *auditPath == "" || *replayPath == "" {
+		return fmt.Errorf("serve requires -registry, -signing-key, -workload-keys, -idp-jwks, -audit-log, and -replay-log")
 	}
 	reg, err := registry.LoadFile(*regPath)
 	if err != nil {
@@ -69,6 +71,11 @@ func cmdServe(args []string) error {
 		return err
 	}
 	defer log.Close()
+	replay, err := sts.OpenReplayCache(*replayPath, nil)
+	if err != nil {
+		return err
+	}
+	defer replay.Close()
 	cfg := &sts.Config{
 		Issuer:      *issuer,
 		TTL:         *ttl,
@@ -79,7 +86,7 @@ func cmdServe(args []string) error {
 		IdPKeys:     idpKeys,
 		IdPIssuer:   *idpIss,
 		Audit:       log,
-		Replay:      sts.NewReplayCache(nil),
+		Replay:      replay,
 		RateLimit:   *rate,
 		TLSCertFile: *tlsCert,
 		TLSKeyFile:  *tlsKey,
@@ -123,8 +130,12 @@ func loadJWKS(path string) (token.JWKS, error) {
 		Keys      []token.JWK `json:"keys"`
 		Workloads []token.JWK `json:"workloads"`
 	}
-	if err := json.Unmarshal(b, &wrapped); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	if err := dec.Decode(&wrapped); err != nil {
 		return token.JWKS{}, err
+	}
+	if dec.More() {
+		return token.JWKS{}, fmt.Errorf("trailing json in %s", path)
 	}
 	keys := wrapped.Keys
 	if len(keys) == 0 {

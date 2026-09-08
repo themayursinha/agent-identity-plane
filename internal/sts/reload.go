@@ -42,14 +42,8 @@ func (r *Reloader) Reload() error {
 			return err
 		}
 	}
-	if reg != nil {
-		r.cfg.SetRegistry(reg)
-	}
-	if kr != nil {
-		if err := r.cfg.ReplaceKeyring(kr); err != nil {
-			r.cfg.Metrics.ReloadFails.Add(1)
-			return err
-		}
+	if reg != nil || kr != nil {
+		r.cfg.installIdentity(reg, kr)
 	}
 	r.cfg.Metrics.Reloads.Add(1)
 	return nil
