@@ -1,0 +1,55 @@
+# Local planning — never push
+.planning/
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials.json
+keys/
+!testdata/**/*.json
+
+# Private notes and drafts
+PLAN.md
+NOTES.md
+DRAFT.md
+PRIVATE.md
+INTERNAL.md
+
+# Build artifacts
+/agent-identity-plane
+/visor-gateway
+dist/
+*.test
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test and local evidence artifacts
+coverage.out
+coverage.html
+*.prof
+evidence/
+
+# Logs and audit
+*.log
+audit-logs/
+*.jsonl
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Nested worktrees and editor metadata
+.worktrees/
+.cursor/
+AGENTS.md

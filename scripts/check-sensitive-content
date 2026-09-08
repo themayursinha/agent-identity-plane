@@ -1,0 +1,41 @@
+#!/bin/bash
+# Fail if repository-tracked files contain local/internal paths or private runtime artifacts.
+set -euo pipefail
+
+fail=0
+
+tracked_evidence=$(git ls-files 'evidence/**' 2>/dev/null || true)
+if [[ -n "$tracked_evidence" ]]; then
+  echo "BLOCKED: evidence/ contains tracked files. Keep runtime evidence local/private." >&2
+  echo "$tracked_evidence" >&2
+  fail=1
+fi
+
+tracked_planning=$(git ls-files '.planning' '.planning/**' 2>/dev/null || true)
+if [[ -n "$tracked_planning" ]]; then
+  echo "BLOCKED: .planning/ must stay local and untracked." >&2
+  echo "$tracked_planning" >&2
+  fail=1
+fi
+
+# Exclude this checker so the denylist definitions do not self-match.
+if git grep -n -I -E '(/home/mayur|/datadisk|/Users/[^/[:space:]]+|C:\\Users\\|[Ss]tellaris)' -- . ':(exclude)scripts/check-sensitive-content' >/tmp/aip-sensitive-hits.txt 2>/dev/null; then
+  echo "BLOCKED: tracked files contain local/internal path markers:" >&2
+  cat /tmp/aip-sensitive-hits.txt >&2
+  fail=1
+fi
+rm -f /tmp/aip-sensitive-hits.txt
+
+if git grep -n -I -E '(\.hermes|Obsidian)' -- . ':(exclude)scripts/check-sensitive-content' >/tmp/aip-private-hits.txt 2>/dev/null; then
+  echo "BLOCKED: tracked files contain private tooling markers:" >&2
+  cat /tmp/aip-private-hits.txt >&2
+  fail=1
+fi
+rm -f /tmp/aip-private-hits.txt
+
+if [[ "$fail" -ne 0 ]]; then
+  echo "Sensitive content guard failed." >&2
+  exit 1
+fi
+
+echo "Sensitive content scan: clean"

@@ -1,0 +1,19 @@
+# Standards alignment
+
+This implementation composes existing standards. It does not claim to be a
+complete AIMS or WIMSE deployment.
+
+| Source | What we take | What we do not implement |
+|---|---|---|
+| [Uber, Solving the Identity Crisis for AI Agents](https://www.uber.com/us/en/blog/solving-the-agent-identity-crisis/) (May 2026) | Registry, per-hop STS, single-audience short-lived JWTs, actor chain, A2A paved path, MCP gateway as PEP, reconstructable audit | Uber-internal Michelangelo, live SPIRE, production P99 SLO |
+| [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693) Token Exchange | `subject_token` / `actor_token`, nested `act` | Full OAuth AS feature set, `may_act`, RFC 9068 access-token profile |
+| [draft-klrc-aiagent-auth-03](https://datatracker.ietf.org/doc/draft-klrc-aiagent-auth/) AIMS | Agents are workloads; WIMSE-style URIs; OAuth as delegation; audit minimums (agent id, delegated subject, resource, action, decision) | Browser authorization-code UX, transaction-token replacement flow, WPT |
+| [draft-ietf-oauth-transaction-tokens-11](https://datatracker.ietf.org/doc/draft-ietf-oauth-transaction-tokens/) | Immutable `sub`/`txn`, short-lived context tokens | Full Txn-Token processing, `purp` authorization semantics |
+| [draft-oauth-transaction-tokens-for-agents-06](https://www.ietf.org/archive/id/draft-oauth-transaction-tokens-for-agents-06.html) | Flat `actchain` plus current `act` | Replacement-flow TTS specifics |
+| WIMSE identifier / workload-creds / WPT | URI identifiers; JWT-SVID-shaped actor tokens | X.509 SVIDs, Workload Proof Tokens, mTLS |
+| mcp-visor threat model | Spoofed `--client-id` is unauthenticated | In-proxy `lineage_require` (proposed in visor-integration.md) |
+
+Differentiation versus related OSS (Charon, PingFederate demos, KAIF): this
+repo is Go, standard-library only, deterministic, fail-closed, and designed as
+the identity half of an existing MCP policy proxy rather than a replacement
+for it.

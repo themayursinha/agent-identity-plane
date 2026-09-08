@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "agents": [
+    {
+      "id": "spiffe://example.test/agent/oncall",
+      "workloads": ["spiffe://example.test/workload/oncall"],
+      "audiences": ["spiffe://example.test/agent/investigation"],
+      "max_scopes": ["mcp:github:pr", "mcp:alerts:read", "mcp:alerts:write"],
+      "max_depth": 4
+    },
+    {
+      "id": "spiffe://example.test/agent/investigation",
+      "workloads": ["spiffe://example.test/workload/investigation"],
+      "audiences": ["spiffe://example.test/agent/monitoring", "https://mcp-gateway.example.test"],
+      "max_scopes": ["mcp:github:pr", "mcp:alerts:read"],
+      "max_depth": 4
+    },
+    {
+      "id": "spiffe://example.test/agent/monitoring",
+      "workloads": ["spiffe://example.test/workload/monitoring"],
+      "audiences": ["https://mcp-gateway.example.test"],
+      "max_scopes": ["mcp:github:pr"],
+      "max_depth": 4
+    }
+  ]
+}
