@@ -55,9 +55,14 @@ func (k *Keyring) Replace(activeKID string, keys []*KeyFile) error {
 	}
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	if k.activeKID != "" && activeKID != k.activeKID {
-		if _, ok := k.byKID[activeKID]; !ok {
-			return fmt.Errorf("%w: cannot activate unpublished kid %q", ErrUnknownKey, activeKID)
+	if k.byKID != nil {
+		if err := publicMaterialStable(jwksFrom(k.activeKID, k.byKID), jwksFrom(activeKID, next)); err != nil {
+			return err
+		}
+		if k.activeKID != "" && activeKID != k.activeKID {
+			if _, ok := k.byKID[activeKID]; !ok {
+				return fmt.Errorf("%w: cannot activate unpublished kid %q", ErrUnknownKey, activeKID)
+			}
 		}
 	}
 	k.activeKID = activeKID
@@ -77,7 +82,9 @@ func (k *Keyring) HasKID(kid string) bool {
 
 // AllowActivation reports whether next may replace prev. Bootstrap
 // (no previous ring) may activate any kid in next. After that, a new
-// active_kid must already have been published in prev's JWKS.
+// active_kid must already have been published in prev's JWKS, and every
+// overlapping kid must keep the same public material. A kid is a key,
+// not a reusable label.
 func AllowActivation(prev, next *Keyring) error {
 	if next == nil || next.ActiveKID() == "" {
 		return ErrInvalidKey
@@ -86,10 +93,41 @@ func AllowActivation(prev, next *Keyring) error {
 		return nil
 	}
 	want := next.ActiveKID()
-	if want == prev.ActiveKID() || prev.HasKID(want) {
-		return nil
+	if want != prev.ActiveKID() && !prev.HasKID(want) {
+		return fmt.Errorf("%w: cannot activate unpublished kid %q", ErrUnknownKey, want)
 	}
-	return fmt.Errorf("%w: cannot activate unpublished kid %q", ErrUnknownKey, want)
+	return publicMaterialStable(prev.JWKS(), next.JWKS())
+}
+
+func publicMaterialStable(prev, next JWKS) error {
+	byNext := make(map[string]JWK, len(next.Keys))
+	for _, j := range next.Keys {
+		byNext[j.KID] = j
+	}
+	for _, j := range prev.Keys {
+		n, ok := byNext[j.KID]
+		if !ok {
+			continue
+		}
+		if !j.PublicEqual(n) {
+			return fmt.Errorf("%w: kid %q public material changed", ErrInvalidKey, j.KID)
+		}
+	}
+	return nil
+}
+
+func jwksFrom(active string, by map[string]*Signer) JWKS {
+	out := make([]JWK, 0, len(by))
+	if s := by[active]; s != nil {
+		out = append(out, s.PublicJWK())
+	}
+	for kid, s := range by {
+		if kid == active {
+			continue
+		}
+		out = append(out, s.PublicJWK())
+	}
+	return JWKS{Keys: out}
 }
 
 func (k *Keyring) ActiveKID() string {
@@ -120,17 +158,7 @@ func (k *Keyring) JWKS() JWKS {
 	}
 	k.mu.RLock()
 	defer k.mu.RUnlock()
-	out := make([]JWK, 0, len(k.byKID))
-	if s := k.byKID[k.activeKID]; s != nil {
-		out = append(out, s.PublicJWK())
-	}
-	for kid, s := range k.byKID {
-		if kid == k.activeKID {
-			continue
-		}
-		out = append(out, s.PublicJWK())
-	}
-	return JWKS{Keys: out}
+	return jwksFrom(k.activeKID, k.byKID)
 }
 
 type keyringFile struct {

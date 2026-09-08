@@ -91,6 +91,36 @@ func TestKeyringRejectsUnpublishedActivation(t *testing.T) {
 	}
 }
 
+func TestKeyringRejectsMutatedPublishedMaterial(t *testing.T) {
+	k1 := mustKey(t, "sts-1")
+	k1b := mustKey(t, "sts-1")
+	kr, err := NewKeyring("sts-1", []*KeyFile{k1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := kr.Replace("sts-1", []*KeyFile{k1b}); err == nil {
+		t.Fatal("mutating published kid material must fail")
+	}
+	if kr.ActiveKID() != "sts-1" {
+		t.Fatalf("active mutated: %s", kr.ActiveKID())
+	}
+	k2 := mustKey(t, "sts-2")
+	if err := kr.Replace("sts-1", []*KeyFile{k1, k2}); err != nil {
+		t.Fatal(err)
+	}
+	k2b := mustKey(t, "sts-2")
+	if err := kr.Replace("sts-2", []*KeyFile{k1, k2b}); err == nil {
+		t.Fatal("activating a preloaded kid with changed bytes must fail")
+	}
+	next, err := NewKeyring("sts-1", []*KeyFile{k1b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := AllowActivation(kr, next); err == nil {
+		t.Fatal("AllowActivation must require stable public material")
+	}
+}
+
 func TestKeyRetirementWaitIncludesSkew(t *testing.T) {
 	if KeyRetirementWait(120*time.Second) != 150*time.Second {
 		t.Fatalf("got %s", KeyRetirementWait(120*time.Second))

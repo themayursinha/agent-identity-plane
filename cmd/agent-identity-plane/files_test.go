@@ -91,3 +91,30 @@ func TestRejectAliasedPathsDistinctOK(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRejectAliasedPathsDanglingSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "shared.jsonl")
+	a := filepath.Join(dir, "audit.jsonl")
+	b := filepath.Join(dir, "replay.jsonl")
+	if err := os.Symlink(target, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, b); err != nil {
+		t.Fatal(err)
+	}
+	if err := rejectAliasedPaths([]namedPath{{"-audit-log", a}, {"-replay-log", b}}); err == nil {
+		t.Fatal("dangling symlinks to the same target must alias")
+	}
+	relA := filepath.Join(dir, "rel-audit")
+	relB := filepath.Join(dir, "rel-replay")
+	if err := os.Symlink("shared.jsonl", relA); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("shared.jsonl", relB); err != nil {
+		t.Fatal(err)
+	}
+	if err := rejectAliasedPaths([]namedPath{{"-audit-log", relA}, {"-replay-log", relB}}); err == nil {
+		t.Fatal("relative dangling symlinks to the same target must alias")
+	}
+}

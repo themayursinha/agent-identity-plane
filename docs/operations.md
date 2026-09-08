@@ -44,6 +44,7 @@ Keyring (rotate without dropping in-flight tokens):
    (visor-gateway re-reads `-jwks` / `-jwks-url` on each verify).
 2. Activate: set `active_kid` to the already-published new kid, `kill -HUP`.
    Activating a kid that was not in the previous JWKS is rejected.
+   Reloading a published kid with different public-key bytes is rejected.
 3. Retire: wait at least mint TTL plus clock skew (`KeyRetirementWait`,
    default 150s), then remove the old key and `kill -HUP`.
 
@@ -61,9 +62,11 @@ as `ValidateTime` would still accept them (`exp + 30s` skew). Consumed
 `jti` values are written to `-replay-log` (JSONL, mode 0600) before the
 mint, so a restart does not resurrect them. `-replay-log` must not
 alias `-audit-log`, the signing key, or any other serve identity file
-(same path, symlink, or hard link). Foreign JSONL fails closed at
-open. Retry a hop from a first-hop IdP token, not by replaying an STS
-subject token. This is not an agent denylist.
+(same path, symlink—including dangling links to the same target—or
+hard link). Replay records require `jti` and `until`; foreign or
+incomplete JSONL fails closed at open. Retry a hop from a first-hop
+IdP token, not by replaying an STS subject token. This is not an agent
+denylist.
 
 ## Endpoints
 

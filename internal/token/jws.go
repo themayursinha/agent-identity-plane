@@ -51,6 +51,12 @@ type JWK struct {
 	E   string `json:"e,omitempty"`
 }
 
+// PublicEqual reports whether two JWKs are the same verification key.
+func (j JWK) PublicEqual(o JWK) bool {
+	return j.KID == o.KID && j.Kty == o.Kty && j.Use == o.Use && j.Alg == o.Alg &&
+		j.Crv == o.Crv && j.X == o.X && j.Y == o.Y && j.N == o.N && j.E == o.E
+}
+
 // JWKS is a JSON Web Key Set.
 type JWKS struct {
 	Keys []JWK `json:"keys"`

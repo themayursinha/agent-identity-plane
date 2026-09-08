@@ -2,6 +2,7 @@ package audit
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -89,9 +90,9 @@ func (l *Logger) recover() error {
 		if len(line) == 0 {
 			continue
 		}
-		var e Event
-		if err := json.Unmarshal(line, &e); err != nil {
-			return fmt.Errorf("audit: corrupt record: %w", err)
+		e, err := decodeAuditRecord(line)
+		if err != nil {
+			return err
 		}
 		last = e
 		n++
@@ -105,6 +106,31 @@ func (l *Logger) recover() error {
 	l.prevHash = last.Hash
 	l.chainIndex = last.ChainIndex
 	return nil
+}
+
+func decodeAuditRecord(raw []byte) (Event, error) {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return Event{}, fmt.Errorf("audit: corrupt record: %w", err)
+	}
+	for _, field := range []string{"timestamp", "event_type", "reason_code", "hash", "prev_hash", "chain_index"} {
+		if _, ok := probe[field]; !ok {
+			return Event{}, fmt.Errorf("audit: record missing %s", field)
+		}
+	}
+	var e Event
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&e); err != nil {
+		return Event{}, fmt.Errorf("audit: corrupt record: %w", err)
+	}
+	if dec.More() {
+		return Event{}, fmt.Errorf("audit: trailing json in record")
+	}
+	if e.EventType == "" || e.ReasonCode == "" || e.Hash == "" || e.PrevHash == "" || e.ChainIndex == 0 {
+		return Event{}, fmt.Errorf("audit: incomplete record")
+	}
+	return e, nil
 }
 
 // Append writes e, filling hash-chain fields, and Syncs the file.

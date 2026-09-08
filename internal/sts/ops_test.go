@@ -106,6 +106,16 @@ func TestReplayRejectsForeignJSONL(t *testing.T) {
 	}
 }
 
+func TestReplayRejectsIncompleteRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "replay.jsonl")
+	if err := os.WriteFile(path, []byte(`{"jti":"consumed-token"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sts.OpenReplayCache(path, nil); err == nil {
+		t.Fatal("replay record missing until must fail closed")
+	}
+}
+
 func TestReplayRetainsClockSkewWindow(t *testing.T) {
 	now := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
 	cur := now
@@ -210,6 +220,30 @@ func TestReloadRejectsUnpublishedActivation(t *testing.T) {
 	rel := sts.NewReloader(w.STS, "", keyPath)
 	if err := rel.Reload(); err == nil {
 		t.Fatal("expected unpublished activation to fail")
+	}
+	if w.STS.Signer.ActiveKID() != "sts-1" {
+		t.Fatalf("active mutated: %s", w.STS.Signer.ActiveKID())
+	}
+}
+
+func TestReloadRejectsMutatedPublishedMaterial(t *testing.T) {
+	w := testWorld(t)
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "keys.json")
+	mutated, err := token.GenerateEd25519("sts-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(map[string]any{"active_kid": "sts-1", "keys": []any{mutated}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rel := sts.NewReloader(w.STS, "", keyPath)
+	if err := rel.Reload(); err == nil {
+		t.Fatal("expected mutated published material to fail")
 	}
 	if w.STS.Signer.ActiveKID() != "sts-1" {
 		t.Fatalf("active mutated: %s", w.STS.Signer.ActiveKID())

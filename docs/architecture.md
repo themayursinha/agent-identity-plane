@@ -63,7 +63,7 @@ host). Default is `127.0.0.1`.
 - Signing material is a 0600 Ed25519 key file or a keyring document
   (`active_kid` + `keys`). Mint uses the active kid. A new kid must be
   published in JWKS (preload) before it can become `active_kid`.
-  `/jwks.json` lists every key in the ring; retire a kid only after
+  Overlapping kids keep the same public-key bytes. `/jwks.json` lists every key in the ring; retire a kid only after
   mint TTL plus clock skew.
 - `SIGHUP` reloads registry and signing files, then publishes both as
   one snapshot. Invalid documents keep the previous snapshot.

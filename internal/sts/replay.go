@@ -86,7 +86,7 @@ func (c *ReplayCache) recover() error {
 		if err != nil {
 			return err
 		}
-		if rec.JTI == "" || rec.Until < now {
+		if rec.Until < now {
 			continue
 		}
 		c.seen[rec.JTI] = rec.Until
@@ -142,6 +142,16 @@ func (c *ReplayCache) purgeLocked(now time.Time) {
 }
 
 func decodeReplayRecord(raw []byte) (replayRecord, error) {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return replayRecord{}, fmt.Errorf("sts: corrupt replay record: %w", err)
+	}
+	if _, ok := probe["jti"]; !ok {
+		return replayRecord{}, fmt.Errorf("sts: replay record missing jti")
+	}
+	if _, ok := probe["until"]; !ok {
+		return replayRecord{}, fmt.Errorf("sts: replay record missing until")
+	}
 	var rec replayRecord
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
@@ -150,6 +160,12 @@ func decodeReplayRecord(raw []byte) (replayRecord, error) {
 	}
 	if dec.More() {
 		return rec, fmt.Errorf("sts: trailing json in replay record")
+	}
+	if rec.JTI == "" {
+		return rec, fmt.Errorf("sts: replay record missing jti")
+	}
+	if rec.Until <= 0 {
+		return rec, fmt.Errorf("sts: replay record missing until")
 	}
 	return rec, nil
 }

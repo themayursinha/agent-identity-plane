@@ -6,13 +6,17 @@ import (
 	"path/filepath"
 )
 
+const maxSymlinkHops = 256
+
 type namedPath struct {
 	flag string
 	path string
 }
 
 // rejectAliasedPaths fails closed when two exclusive identity files
-// resolve to the same path or inode (symlinks and hard links included).
+// resolve to the same path or inode. Resolution follows symlink chains
+// including a dangling final component, so two links to the same
+// not-yet-created target are aliases.
 func rejectAliasedPaths(files []namedPath) error {
 	for i := range files {
 		if files[i].path == "" {
@@ -62,16 +66,39 @@ func canonicalPath(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	abs = filepath.Clean(abs)
-	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
-		return resolved, nil
+	return resolvePath(filepath.Clean(abs), 0, map[string]struct{}{})
+}
+
+func resolvePath(abs string, hops int, seen map[string]struct{}) (string, error) {
+	if hops > maxSymlinkHops {
+		return "", fmt.Errorf("serve: symlink hop limit exceeded")
 	}
 	dir, base := filepath.Split(abs)
-	if dir == "" {
+	parent := filepath.Clean(dir)
+	if dir != "" && parent != abs {
+		resolved, err := resolvePath(parent, hops, seen)
+		if err != nil {
+			return "", err
+		}
+		abs = filepath.Join(resolved, base)
+	}
+	if _, ok := seen[abs]; ok {
+		return "", fmt.Errorf("serve: symlink loop at %s", abs)
+	}
+	fi, err := os.Lstat(abs)
+	if err != nil {
 		return abs, nil
 	}
-	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
-		return filepath.Join(resolved, base), nil
+	if fi.Mode()&os.ModeSymlink == 0 {
+		return abs, nil
 	}
-	return abs, nil
+	seen[abs] = struct{}{}
+	target, err := os.Readlink(abs)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(abs), target)
+	}
+	return resolvePath(filepath.Clean(target), hops+1, seen)
 }
