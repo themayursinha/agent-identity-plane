@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/themayursinha/agent-identity-plane/internal/audit"
 )
 
 // ValidateBind rejects unspecified addresses (0.0.0.0, ::, empty host).
@@ -89,12 +91,11 @@ func (c *Config) handleToken(w http.ResponseWriter, r *http.Request) {
 	lim := c.limiter
 	c.live.RUnlock()
 	if !lim.allow() {
-		c.Metrics.RateLimited.Add(1)
-		writeOAuthErrorCode(w, http.StatusTooManyRequests, "temporarily_unavailable", "rate limited", ReasonRateLimited)
+		c.writeHTTPDeny(w, http.StatusTooManyRequests, "temporarily_unavailable", "rate limited", ReasonRateLimited)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		writeOAuthErrorCode(w, http.StatusBadRequest, "invalid_request", "malformed form", ReasonInvalidRequest)
+		c.writeHTTPDeny(w, http.StatusBadRequest, "invalid_request", "malformed form", ReasonInvalidRequest)
 		return
 	}
 	req := ExchangeRequest{
@@ -129,6 +130,20 @@ func (c *Config) handleToken(w http.ResponseWriter, r *http.Request) {
 		"expires_in":        res.ExpiresIn,
 		"scope":             res.Issued.Scope,
 	})
+}
+
+func (c *Config) writeHTTPDeny(w http.ResponseWriter, status int, oauthErr, desc, reason string) {
+	c.Metrics.Denied.Add(1)
+	if reason == ReasonRateLimited {
+		c.Metrics.RateLimited.Add(1)
+	}
+	if c.Audit != nil {
+		_ = c.Audit.Append(audit.Event{
+			EventType:  "token_denied",
+			ReasonCode: reason,
+		})
+	}
+	writeOAuthErrorCode(w, status, oauthErr, desc, reason)
 }
 
 func writeOAuthErrorCode(w http.ResponseWriter, status int, err, desc, reason string) {

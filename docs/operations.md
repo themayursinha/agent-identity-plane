@@ -39,9 +39,13 @@ Keyring (rotate without dropping in-flight tokens):
 }
 ```
 
-1. Add the new key, set `active_kid` to it, `kill -HUP`.
-2. Wait at least the mint TTL (default 120s).
-3. Remove the old key, `kill -HUP`.
+1. Preload: add the new key, keep `active_kid` on the current kid, `kill -HUP`.
+   `/jwks.json` now publishes both. Wait until verifiers refresh JWKS
+   (visor-gateway re-reads `-jwks` / `-jwks-url` on each verify).
+2. Activate: set `active_kid` to the already-published new kid, `kill -HUP`.
+   Activating a kid that was not in the previous JWKS is rejected.
+3. Retire: wait at least mint TTL plus clock skew (`KeyRetirementWait`,
+   default 150s), then remove the old key and `kill -HUP`.
 
 ## Registry and key reload
 

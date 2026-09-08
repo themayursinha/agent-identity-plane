@@ -44,7 +44,9 @@ current actor wrapping the incoming `act`. Reason code: `chain_integrity`.
 ## AI8 — Audit before response
 
 Every mint or deny writes a hash-linked JSONL record with a stable
-`reason_code` before the HTTP response is sent. Allows `Sync()` the file.
+`reason_code` before the HTTP response is sent, including HTTP-layer
+denials that never enter `Exchange` (`rate_limited`, malformed form).
+Allows `Sync()` the file.
 
 ## AI9 — Deterministic receipts
 
@@ -76,8 +78,11 @@ consumed this way.
 ## AI13 — Rotatable signing JWKS
 
 The STS signing ring may contain multiple Ed25519 kids. Minting uses
-`active_kid`. Verification JWKS includes every key in the ring so tokens
-minted under a previous kid remain valid until that kid is removed.
+`active_kid`. A kid may become active only after it was already present
+in the previously published JWKS (preload, then activate). Verification
+JWKS includes every key in the ring so tokens minted under a previous
+kid remain valid until that kid is removed, which must wait mint TTL
+plus `ClockSkew`.
 
 ## AI14 — Reload is fail-closed
 

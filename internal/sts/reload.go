@@ -43,7 +43,10 @@ func (r *Reloader) Reload() error {
 		}
 	}
 	if reg != nil || kr != nil {
-		r.cfg.installIdentity(reg, kr)
+		if err := r.cfg.installIdentity(reg, kr); err != nil {
+			r.cfg.Metrics.ReloadFails.Add(1)
+			return err
+		}
 	}
 	r.cfg.Metrics.Reloads.Add(1)
 	return nil

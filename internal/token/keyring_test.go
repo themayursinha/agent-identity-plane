@@ -25,6 +25,9 @@ func TestKeyringRotationKeepsOldKid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := kr.Replace("sts-1", []*KeyFile{old, newer}); err != nil {
+		t.Fatal(err)
+	}
 	if err := kr.Replace("sts-2", []*KeyFile{old, newer}); err != nil {
 		t.Fatal(err)
 	}
@@ -70,6 +73,27 @@ func TestKeyringReplaceFailsClosed(t *testing.T) {
 	}
 	if kr.ActiveKID() != "sts-1" {
 		t.Fatalf("ring mutated on failed replace: %s", kr.ActiveKID())
+	}
+}
+
+func TestKeyringRejectsUnpublishedActivation(t *testing.T) {
+	k1 := mustKey(t, "sts-1")
+	k2 := mustKey(t, "sts-2")
+	kr, err := NewKeyring("sts-1", []*KeyFile{k1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := kr.Replace("sts-2", []*KeyFile{k1, k2}); err == nil {
+		t.Fatal("activating an unpublished kid must fail")
+	}
+	if kr.ActiveKID() != "sts-1" {
+		t.Fatalf("active mutated: %s", kr.ActiveKID())
+	}
+}
+
+func TestKeyRetirementWaitIncludesSkew(t *testing.T) {
+	if KeyRetirementWait(120*time.Second) != 150*time.Second {
+		t.Fatalf("got %s", KeyRetirementWait(120*time.Second))
 	}
 }
 

@@ -113,6 +113,15 @@ func ReplayUntil(exp int64) int64 {
 	return exp + int64(ClockSkew/time.Second)
 }
 
+// KeyRetirementWait is how long a kid must remain in JWKS after it
+// stops minting: mint TTL plus ClockSkew, matching ValidateTime.
+func KeyRetirementWait(ttl time.Duration) time.Duration {
+	if ttl <= 0 {
+		ttl = 120 * time.Second
+	}
+	return ttl + ClockSkew
+}
+
 // ValidateTime checks exp/nbf against now with a small clock skew.
 func (c Claims) ValidateTime(now time.Time, skew time.Duration) error {
 	if skew <= 0 {

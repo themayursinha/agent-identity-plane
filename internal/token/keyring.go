@@ -54,10 +54,42 @@ func (k *Keyring) Replace(activeKID string, keys []*KeyFile) error {
 		return fmt.Errorf("%w: active kid %q not in ring", ErrUnknownKey, activeKID)
 	}
 	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.activeKID != "" && activeKID != k.activeKID {
+		if _, ok := k.byKID[activeKID]; !ok {
+			return fmt.Errorf("%w: cannot activate unpublished kid %q", ErrUnknownKey, activeKID)
+		}
+	}
 	k.activeKID = activeKID
 	k.byKID = next
-	k.mu.Unlock()
 	return nil
+}
+
+func (k *Keyring) HasKID(kid string) bool {
+	if k == nil || kid == "" {
+		return false
+	}
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	_, ok := k.byKID[kid]
+	return ok
+}
+
+// AllowActivation reports whether next may replace prev. Bootstrap
+// (no previous ring) may activate any kid in next. After that, a new
+// active_kid must already have been published in prev's JWKS.
+func AllowActivation(prev, next *Keyring) error {
+	if next == nil || next.ActiveKID() == "" {
+		return ErrInvalidKey
+	}
+	if prev == nil || prev.ActiveKID() == "" {
+		return nil
+	}
+	want := next.ActiveKID()
+	if want == prev.ActiveKID() || prev.HasKID(want) {
+		return nil
+	}
+	return fmt.Errorf("%w: cannot activate unpublished kid %q", ErrUnknownKey, want)
 }
 
 func (k *Keyring) ActiveKID() string {

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/themayursinha/agent-identity-plane/internal/audit"
 	"github.com/themayursinha/agent-identity-plane/internal/scenario"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
 	"github.com/themayursinha/agent-identity-plane/internal/token"
@@ -44,6 +45,9 @@ func TestKeyringOverlapOnSTS(t *testing.T) {
 	}
 	next, err := token.GenerateEd25519("sts-2")
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.STS.Signer.Replace("sts-1", []*token.KeyFile{w.STSKey, next}); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.STS.Signer.Replace("sts-2", []*token.KeyFile{w.STSKey, next}); err != nil {
@@ -137,15 +141,27 @@ func TestReloadPublishesRegistryAndKeyringTogether(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc := map[string]any{"active_kid": "sts-2", "keys": []any{w.STSKey, next}}
-	raw, err := json.Marshal(doc)
+	rel := sts.NewReloader(w.STS, regPath, keyPath)
+	preload, err := json.Marshal(map[string]any{"active_kid": "sts-1", "keys": []any{w.STSKey, next}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(keyPath, raw, 0o600); err != nil {
+	if err := os.WriteFile(keyPath, preload, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	rel := sts.NewReloader(w.STS, regPath, keyPath)
+	if err := rel.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if w.STS.Signer.ActiveKID() != "sts-1" || !w.STS.Signer.HasKID("sts-2") {
+		t.Fatal("preload must publish sts-2 without activating it")
+	}
+	activate, err := json.Marshal(map[string]any{"active_kid": "sts-2", "keys": []any{w.STSKey, next}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, activate, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := rel.Reload(); err != nil {
 		t.Fatal(err)
 	}
@@ -163,6 +179,30 @@ func TestReloadPublishesRegistryAndKeyringTogether(t *testing.T) {
 	}
 	if h.KID != "sts-2" {
 		t.Fatalf("minted kid %s", h.KID)
+	}
+}
+
+func TestReloadRejectsUnpublishedActivation(t *testing.T) {
+	w := testWorld(t)
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "keys.json")
+	next, err := token.GenerateEd25519("sts-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(map[string]any{"active_kid": "sts-2", "keys": []any{w.STSKey, next}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rel := sts.NewReloader(w.STS, "", keyPath)
+	if err := rel.Reload(); err == nil {
+		t.Fatal("expected unpublished activation to fail")
+	}
+	if w.STS.Signer.ActiveKID() != "sts-1" {
+		t.Fatalf("active mutated: %s", w.STS.Signer.ActiveKID())
 	}
 }
 
@@ -196,7 +236,16 @@ func TestRegistryReloadFailClosed(t *testing.T) {
 }
 
 func TestRateLimitHTTP(t *testing.T) {
-	w := testWorld(t)
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	log, err := audit.NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = log.Close() })
+	w, err := scenario.NewWorld(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC), log)
+	if err != nil {
+		t.Fatal(err)
+	}
 	w.STS.RateLimit = 1
 	h := w.STS.Handler()
 	denied := 0
@@ -210,6 +259,20 @@ func TestRateLimitHTTP(t *testing.T) {
 	}
 	if denied == 0 {
 		t.Fatal("expected some rate-limited responses")
+	}
+	if w.STS.Metrics.Denied.Load() == 0 {
+		t.Fatal("rate-limit denials must increment aip_sts_denied_total")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, `"event_type":"token_denied"`) {
+		t.Fatalf("missing token_denied audit: %s", body)
+	}
+	if !strings.Contains(body, `"reason_code":"rate_limited"`) {
+		t.Fatalf("missing rate_limited audit: %s", body)
 	}
 }
 

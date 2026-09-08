@@ -87,7 +87,7 @@ type identitySnap struct {
 // with ReplaceKeyring; use installIdentity so one request never observes
 // a torn registry/keyring pair.
 func (c *Config) SetRegistry(r *registry.Registry) {
-	c.installIdentity(r, nil)
+	_ = c.installIdentity(r, nil)
 }
 
 // ReplaceKeyring swaps signing material in place.
@@ -95,24 +95,30 @@ func (c *Config) ReplaceKeyring(kr *token.Keyring) error {
 	if kr == nil || kr.ActiveKID() == "" {
 		return token.ErrInvalidKey
 	}
-	c.installIdentity(nil, kr)
-	return nil
+	return c.installIdentity(nil, kr)
 }
 
 // installIdentity publishes registry and/or keyring under one lock so
-// Exchange, /jwks.json, and /readyz observe a single snapshot.
-func (c *Config) installIdentity(reg *registry.Registry, kr *token.Keyring) {
+// Exchange, /jwks.json, and /readyz observe a single snapshot. An
+// unpublished active_kid is rejected without mutating either pointer.
+func (c *Config) installIdentity(reg *registry.Registry, kr *token.Keyring) error {
 	if c == nil {
-		return
+		return token.ErrInvalidKey
 	}
 	c.live.Lock()
+	defer c.live.Unlock()
+	if kr != nil {
+		if err := token.AllowActivation(c.Signer, kr); err != nil {
+			return err
+		}
+	}
 	if reg != nil {
 		c.Registry = reg
 	}
 	if kr != nil {
 		c.Signer = kr
 	}
-	c.live.Unlock()
+	return nil
 }
 
 func (c *Config) snapshot() identitySnap {
