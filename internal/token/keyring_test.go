@@ -223,9 +223,11 @@ func TestParseJWKSTrailingJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw = append(raw, []byte(`{"keys":[]}`)...)
-	if _, err := ParseJWKS(raw); err == nil {
+	if _, err := ParseJWKS(append(append([]byte{}, raw...), []byte(`{"keys":[]}`)...)); err == nil {
 		t.Fatal("trailing json must fail closed")
+	}
+	if _, err := ParseJWKS(append(append([]byte{}, raw...), []byte(` }`)...)); err == nil {
+		t.Fatal("trailing closer must fail closed")
 	}
 }
 

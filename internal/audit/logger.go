@@ -2,7 +2,6 @@ package audit
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +10,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/themayursinha/agent-identity-plane/internal/jsonutil"
 )
 
 // GenesisPrevHash is SHA-256 of the empty payload, matching the capability
@@ -119,13 +120,8 @@ func decodeAuditRecord(raw []byte) (Event, error) {
 		}
 	}
 	var e Event
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&e); err != nil {
+	if err := jsonutil.UnmarshalStrict(raw, &e); err != nil {
 		return Event{}, fmt.Errorf("audit: corrupt record: %w", err)
-	}
-	if dec.More() {
-		return Event{}, fmt.Errorf("audit: trailing json in record")
 	}
 	if e.EventType == "" || e.ReasonCode == "" || e.Hash == "" || e.PrevHash == "" || e.ChainIndex == 0 {
 		return Event{}, fmt.Errorf("audit: incomplete record")

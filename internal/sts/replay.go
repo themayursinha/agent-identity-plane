@@ -2,13 +2,13 @@ package sts
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/themayursinha/agent-identity-plane/internal/jsonutil"
 	"github.com/themayursinha/agent-identity-plane/internal/token"
 )
 
@@ -153,13 +153,8 @@ func decodeReplayRecord(raw []byte) (replayRecord, error) {
 		return replayRecord{}, fmt.Errorf("sts: replay record missing until")
 	}
 	var rec replayRecord
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&rec); err != nil {
+	if err := jsonutil.UnmarshalStrict(raw, &rec); err != nil {
 		return rec, fmt.Errorf("sts: corrupt replay record: %w", err)
-	}
-	if dec.More() {
-		return rec, fmt.Errorf("sts: trailing json in replay record")
 	}
 	if rec.JTI == "" {
 		return rec, fmt.Errorf("sts: replay record missing jti")

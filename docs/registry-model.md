@@ -1,9 +1,10 @@
 # Registry model
 
-The agent registry is a strict JSON document (`encoding/json` with
-`DisallowUnknownFields`). Trailing JSON, unknown fields, duplicate agent ids,
-empty identifiers, `max_depth < 1`, missing workloads or audiences, non-URI
-ids, and inverted `created_at`/`expiry` windows fail closed at load.
+The agent registry is a strict JSON document. Unknown fields, trailing
+JSON (including unmatched closers after a complete value), duplicate
+agent ids, empty identifiers, `max_depth < 1`, missing workloads or
+audiences, non-URI ids, and inverted `created_at`/`expiry` windows fail
+closed at load.
 
 ```json
 {

@@ -59,10 +59,10 @@ the hash chain fields themselves, which depend on history).
 ## AI10 — Fail closed
 
 Unknown JSON fields, empty identifiers, inverted validity windows, `alg=none`,
-algorithm confusion, unspecified bind addresses, trailing JSON, and aliased
-identity-file paths (audit log, replay log, signing key, and other serve
-inputs that resolve to the same file) all fail closed. No partial token is
-issued.
+algorithm confusion, unspecified bind addresses, trailing JSON (including
+unmatched closers after a complete value), and aliased identity-file paths
+(audit log, replay log, signing key, and other serve paths that resolve to
+the same file) all fail closed. No partial token is issued.
 
 ## AI11 — Loopback-safe serve
 

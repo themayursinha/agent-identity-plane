@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -13,6 +11,7 @@ import (
 
 	"github.com/themayursinha/agent-identity-plane/internal/attest"
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/jsonutil"
 	"github.com/themayursinha/agent-identity-plane/internal/registry"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
 	"github.com/themayursinha/agent-identity-plane/internal/token"
@@ -143,12 +142,8 @@ func loadJWKS(path string) (token.JWKS, error) {
 		Keys      []token.JWK `json:"keys"`
 		Workloads []token.JWK `json:"workloads"`
 	}
-	dec := json.NewDecoder(bytes.NewReader(b))
-	if err := dec.Decode(&wrapped); err != nil {
+	if err := jsonutil.Unmarshal(b, &wrapped); err != nil {
 		return token.JWKS{}, err
-	}
-	if dec.More() {
-		return token.JWKS{}, fmt.Errorf("trailing json in %s", path)
 	}
 	keys := wrapped.Keys
 	if len(keys) == 0 {

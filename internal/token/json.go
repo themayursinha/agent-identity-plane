@@ -1,30 +1,25 @@
 package token
 
 import (
-	"bytes"
-	"encoding/json"
+	"errors"
 	"fmt"
+
+	"github.com/themayursinha/agent-identity-plane/internal/jsonutil"
 )
 
 func decodeStrict(raw []byte, dest any) error {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(dest); err != nil {
+	if err := jsonutil.UnmarshalStrict(raw, dest); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidKey, err)
-	}
-	if dec.More() {
-		return fmt.Errorf("%w: trailing json", ErrInvalidKey)
 	}
 	return nil
 }
 
 func decodeJSON(raw []byte, dest any) error {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	if err := dec.Decode(dest); err != nil {
+	if err := jsonutil.Unmarshal(raw, dest); err != nil {
+		if errors.Is(err, jsonutil.ErrTrailing) {
+			return fmt.Errorf("%w: trailing json", ErrInvalidKey)
+		}
 		return err
-	}
-	if dec.More() {
-		return fmt.Errorf("%w: trailing json", ErrInvalidKey)
 	}
 	return nil
 }
