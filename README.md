@@ -24,7 +24,7 @@ The design follows Uber’s [Identity & Trust Foundation](https://www.uber.com/u
 | [**authority-graph-simulator**](https://github.com/themayursinha/authority-graph-simulator) | What authority can an agent *reach*? (counterfactual delegation analysis) | Prototype |
 | [**capability-delta-receipts**](https://github.com/themayursinha/capability-delta-receipts) | What capability can an agent *acquire*? (trajectory-level capability accounting) | Prototype |
 
-mcp-visor’s `--client-id` is an operator-supplied string and is not authenticated. This project issues a verified actor chain and a visor-gateway that derives `--client-id` and `--session-id` from that chain, closing the spoofed-identity gap without replacing Visor’s action policy. See [docs/visor-integration.md](docs/visor-integration.md).
+mcp-visor’s `--client-id` is an operator-supplied string and is not authenticated. This project issues a verified actor chain and a visor-gateway that derives `--client-id` and `--session-id` from that chain, closing the spoofed-identity gap without replacing Visor’s action policy. See [docs/visor-integration.md](docs/visor-integration.md). The two prototypes are standalone proofs; visor also ships an opt-in capability evaluator aligned with capability-delta-receipts. The authority-graph is not in the proxy.
 
 ---
 
