@@ -46,7 +46,8 @@ current actor wrapping the incoming `act`. Reason code: `chain_integrity`.
 Every mint or deny writes a hash-linked JSONL record with a stable
 `reason_code` before the HTTP response is sent, including HTTP-layer
 denials that never enter `Exchange` (`rate_limited`, malformed form).
-Allows `Sync()` the file.
+The audit log path must not alias the replay log. Allows `Sync()` the
+file.
 
 ## AI9 — Deterministic receipts
 
@@ -57,8 +58,10 @@ the hash chain fields themselves, which depend on history).
 ## AI10 — Fail closed
 
 Unknown JSON fields, empty identifiers, inverted validity windows, `alg=none`,
-algorithm confusion, unspecified bind addresses, and trailing JSON all fail
-closed. No partial token is issued.
+algorithm confusion, unspecified bind addresses, trailing JSON, and aliased
+identity-file paths (audit log, replay log, signing key, and other serve
+inputs that resolve to the same file) all fail closed. No partial token is
+issued.
 
 ## AI11 — Loopback-safe serve
 
@@ -71,9 +74,10 @@ An STS-issued subject token (`jti`) is consumed on the first successful
 exchange and remains consumed through the same `exp + ClockSkew` window
 `ValidateTime` uses, including across process restart when a replay log
 is configured. A second exchange with that `jti` in that window is
-denied (`replayed_token`) and issues no token. Missing replay state or
-a failed durable write fail closed. First-hop IdP user tokens are not
-consumed this way.
+denied (`replayed_token`) and issues no token. Missing replay state, a
+failed durable write, a foreign replay JSONL, or a replay path that
+aliases another exclusive identity file fail closed. First-hop IdP user
+tokens are not consumed this way.
 
 ## AI13 — Rotatable signing JWKS
 

@@ -40,6 +40,19 @@ func cmdServe(args []string) error {
 	if *regPath == "" || *keyPath == "" || *wlPath == "" || *idpPath == "" || *auditPath == "" || *replayPath == "" {
 		return fmt.Errorf("serve requires -registry, -signing-key, -workload-keys, -idp-jwks, -audit-log, and -replay-log")
 	}
+	if err := rejectAliasedPaths([]namedPath{
+		{"-registry", *regPath},
+		{"-signing-key", *keyPath},
+		{"-workload-keys", *wlPath},
+		{"-idp-jwks", *idpPath},
+		{"-spiffe-jwks", *spiffePath},
+		{"-audit-log", *auditPath},
+		{"-replay-log", *replayPath},
+		{"-tls-cert", *tlsCert},
+		{"-tls-key", *tlsKey},
+	}); err != nil {
+		return err
+	}
 	reg, err := registry.LoadFile(*regPath)
 	if err != nil {
 		return err

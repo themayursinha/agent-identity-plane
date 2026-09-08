@@ -65,7 +65,8 @@ agent-identity-plane serve \
   -signing-key testdata/sts-ed25519.json \
   -workload-keys testdata/workloads.json \
   -idp-jwks testdata/idp-jwks.json \
-  -audit-log ./sts-audit.jsonl
+  -audit-log ./sts-audit.jsonl \
+  -replay-log ./sts-replay.jsonl
 ```
 
 ## What it enforces

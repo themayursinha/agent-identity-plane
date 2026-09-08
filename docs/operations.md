@@ -59,9 +59,11 @@ changes and the process does not exit.
 STS-issued subject tokens are single-use at `/oauth/token` for as long
 as `ValidateTime` would still accept them (`exp + 30s` skew). Consumed
 `jti` values are written to `-replay-log` (JSONL, mode 0600) before the
-mint, so a restart does not resurrect them. Retry a hop from a
-first-hop IdP token, not by replaying an STS subject token. This is not
-an agent denylist.
+mint, so a restart does not resurrect them. `-replay-log` must not
+alias `-audit-log`, the signing key, or any other serve identity file
+(same path, symlink, or hard link). Foreign JSONL fails closed at
+open. Retry a hop from a first-hop IdP token, not by replaying an STS
+subject token. This is not an agent denylist.
 
 ## Endpoints
 

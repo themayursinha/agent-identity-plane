@@ -2,6 +2,7 @@ package sts
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -81,9 +82,9 @@ func (c *ReplayCache) recover() error {
 		if len(line) == 0 {
 			continue
 		}
-		var rec replayRecord
-		if err := json.Unmarshal(line, &rec); err != nil {
-			return fmt.Errorf("sts: corrupt replay record: %w", err)
+		rec, err := decodeReplayRecord(line)
+		if err != nil {
+			return err
 		}
 		if rec.JTI == "" || rec.Until < now {
 			continue
@@ -138,6 +139,19 @@ func (c *ReplayCache) purgeLocked(now time.Time) {
 			delete(c.seen, k)
 		}
 	}
+}
+
+func decodeReplayRecord(raw []byte) (replayRecord, error) {
+	var rec replayRecord
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&rec); err != nil {
+		return rec, fmt.Errorf("sts: corrupt replay record: %w", err)
+	}
+	if dec.More() {
+		return rec, fmt.Errorf("sts: trailing json in replay record")
+	}
+	return rec, nil
 }
 
 type replayError string

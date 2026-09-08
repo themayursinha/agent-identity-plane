@@ -96,6 +96,16 @@ func TestReplaySurvivesRestart(t *testing.T) {
 	}
 }
 
+func TestReplayRejectsForeignJSONL(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mixed.jsonl")
+	if err := os.WriteFile(path, []byte(`{"event_type":"token_denied","reason_code":"ok"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sts.OpenReplayCache(path, nil); err == nil {
+		t.Fatal("audit-shaped replay log must fail closed")
+	}
+}
+
 func TestReplayRetainsClockSkewWindow(t *testing.T) {
 	now := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
 	cur := now

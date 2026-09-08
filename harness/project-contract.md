@@ -38,12 +38,13 @@ Subcommands: `serve`, `registry lint`, `token inspect`, `token verify`,
 
 `serve` loads a 0600 signing key or keyring (`active_kid` + `keys`),
 rejects group/world-readable key files, optional `-tls-cert`/`-tls-key`,
-`-rate-limit` (default 30/s), and a required `-replay-log`. SIGHUP
+`-rate-limit` (default 30/s), and a required `-replay-log` that must
+not alias `-audit-log` or other exclusive identity files. SIGHUP
 reloads registry and signing material as one identity snapshot; an
 invalid file keeps the previous snapshot.
 
 A deny is an authorization result (HTTP 400 with `error` / `error_description`
 and a reason code), not a process failure. Process failure is reserved for
-unreadable config, unspecified bind addresses, open signing-key modes, and
-malformed registry files at startup. Reload failures are logged and do not
-exit the process.
+unreadable config, unspecified bind addresses, open signing-key modes,
+aliased identity-file paths, and malformed registry files at startup.
+Reload failures are logged and do not exit the process.

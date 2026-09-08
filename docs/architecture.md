@@ -68,7 +68,8 @@ host). Default is `127.0.0.1`.
 - `SIGHUP` reloads registry and signing files, then publishes both as
   one snapshot. Invalid documents keep the previous snapshot.
 - Consumed STS subject `jti` values are durable (`-replay-log`) through
-  `exp + ClockSkew` and survive restart.
+  `exp + ClockSkew` and survive restart. The replay log must not alias
+  the audit log or other exclusive identity files.
 - Optional `-tls-cert` / `-tls-key`. Without them, put a TLS reverse
   proxy in front and keep the STS on loopback (see
   [operations.md](operations.md)).
