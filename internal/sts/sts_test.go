@@ -132,7 +132,7 @@ func TestDepthExceeded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.STS.Registry = r
+	w.STS.SetRegistry(r)
 	user, _ := w.UserToken()
 	r1 := w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
 	if r1.ReasonCode != sts.ReasonOK {

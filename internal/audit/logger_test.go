@@ -62,3 +62,13 @@ func TestHashChain(t *testing.T) {
 		t.Fatal("recover prev hash")
 	}
 }
+
+func TestRecoverRejectsIncompleteRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	if err := os.WriteFile(path, []byte(`{"jti":"x"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewLogger(path); err == nil {
+		t.Fatal("incomplete audit JSONL must fail closed")
+	}
+}

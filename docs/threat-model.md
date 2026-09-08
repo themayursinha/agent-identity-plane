@@ -27,6 +27,7 @@ This document is an engineering threat model, not a compliance claim.
 | Privilege accumulation | Scope subset (AI5) | `scope_widening` |
 | Unbounded delegation | `max_depth` (AI6) | `depth_exceeded` |
 | Forged actor chain | STS vs IdP key split; nested `act` rebuilt from verified token (AI7) | `chain_integrity` / `invalid_subject_token` |
+| Stolen STS subject reused at exchange | `jti` consumed on first successful hop (AI12) | `replayed_token` |
 | `alg=none` / alg confusion | Header alg must match JWK type | verify fail |
 | Missing attribution | Audit record before HTTP response (AI8) | n/a |
 | Unspecified bind | `ValidateBind` (AI11) | process error |
@@ -36,7 +37,7 @@ This document is an engineering threat model, not a compliance claim.
 - Not a live SPIRE Workload API or node attestor. JWT-SVID verification is JWKS-based and fixture-tested.
 - Not a host sandbox. A compromised workload that *is* registered for an agent can mint tokens for that agent.
 - Not mcp-visor action policy. A valid actor chain can still be denied by visor tool rules.
-- Revocation is TTL + audit; there is no denylist in v0.1.0.
+- Revocation is TTL + durable `jti` replay at exchange for STS-issued subject tokens (including clock skew and process restart); there is no agent denylist in v0.2.0.
 - Proof-of-possession (WPT / DPoP) is not implemented; minted tokens are bearer tokens with short TTL and single audience.
 - Cross-domain federation (OAuth Identity Chaining) is not implemented.
 

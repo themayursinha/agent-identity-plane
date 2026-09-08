@@ -44,7 +44,11 @@ current actor wrapping the incoming `act`. Reason code: `chain_integrity`.
 ## AI8 — Audit before response
 
 Every mint or deny writes a hash-linked JSONL record with a stable
-`reason_code` before the HTTP response is sent. Allows `Sync()` the file.
+`reason_code` before the HTTP response is sent, including HTTP-layer
+denials that never enter `Exchange` (`rate_limited`, malformed form).
+The audit log path must not alias the replay log. Recovered audit
+records must be complete (hash-chain fields present). Allows `Sync()`
+the file.
 
 ## AI9 — Deterministic receipts
 
@@ -55,10 +59,48 @@ the hash chain fields themselves, which depend on history).
 ## AI10 — Fail closed
 
 Unknown JSON fields, empty identifiers, inverted validity windows, `alg=none`,
-algorithm confusion, unspecified bind addresses, and trailing JSON all fail
-closed. No partial token is issued.
+algorithm confusion, unspecified bind addresses, trailing JSON (including
+unmatched closers after a complete value), and aliased identity-file paths
+(audit log, replay log, signing key, and other serve paths that resolve to
+the same file) all fail closed. No partial token is issued.
 
 ## AI11 — Loopback-safe serve
 
 `serve` rejects bind hosts that are empty or unspecified (`0.0.0.0`, `::`).
 Default listen address is `127.0.0.1:8080`.
+
+## AI12 — STS subject tokens are single-use at exchange
+
+An STS-issued subject token (`jti`) is consumed on the first successful
+exchange and remains consumed through the same `exp + ClockSkew` window
+`ValidateTime` uses, including across process restart when a replay log
+is configured. A second exchange with that `jti` in that window is
+denied (`replayed_token`) and issues no token. Missing replay state, a
+failed durable write, a foreign or incomplete replay JSONL, or a replay
+path that aliases another exclusive identity file fail closed.
+First-hop IdP user tokens are not consumed this way.
+
+## AI13 — Rotatable signing JWKS
+
+The STS signing ring may contain multiple Ed25519 kids. Minting uses
+`active_kid`. A kid may become active only after it was already present
+in the previously published JWKS (preload, then activate), with the
+same public-key bytes. A published kid is that material, not a reusable
+label: overlapping kids cannot change `x` (or other verification
+fields). Verification JWKS includes every key in the ring so tokens
+minted under a previous kid remain valid until that kid is removed,
+which must wait mint TTL plus `ClockSkew`.
+
+## AI14 — Reload is fail-closed
+
+SIGHUP (or `Reloader.Reload`) loads every requested identity document
+completely, then publishes registry and signing ring under one lock.
+An invalid document leaves the previous snapshot in place and the
+process stays up. One request never observes a new registry with an
+old signing ring, or the reverse.
+
+## AI15 — Signing-key file mode
+
+On-disk STS signing material must be a regular file that is not
+group- or world-readable. Open modes fail closed at load and reload.
+

@@ -2,11 +2,14 @@ package sts
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/themayursinha/agent-identity-plane/internal/audit"
 )
 
 // ValidateBind rejects unspecified addresses (0.0.0.0, ::, empty host).
@@ -30,14 +33,43 @@ func ValidateBind(addr string) error {
 
 // Handler returns the STS HTTP mux.
 func (c *Config) Handler() http.Handler {
+	c.live.Lock()
+	if c.limiter == nil && c.RateLimit > 0 {
+		c.limiter = newTokenBucket(c.RateLimit)
+	}
+	c.live.Unlock()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		snap := c.snapshot()
+		if snap.Registry == nil || snap.Signer == nil || snap.Signer.ActiveKID() == "" {
+			http.Error(w, "not ready\n", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = fmt.Fprintf(w, "aip_sts_minted_total %d\n", c.Metrics.Minted.Load())
+		_, _ = fmt.Fprintf(w, "aip_sts_denied_total %d\n", c.Metrics.Denied.Load())
+		_, _ = fmt.Fprintf(w, "aip_sts_replay_rejected_total %d\n", c.Metrics.Replays.Load())
+		_, _ = fmt.Fprintf(w, "aip_sts_reloads_total %d\n", c.Metrics.Reloads.Load())
+		_, _ = fmt.Fprintf(w, "aip_sts_reload_failures_total %d\n", c.Metrics.ReloadFails.Load())
+		_, _ = fmt.Fprintf(w, "aip_sts_rate_limited_total %d\n", c.Metrics.RateLimited.Load())
+	})
 	mux.HandleFunc("GET /jwks.json", func(w http.ResponseWriter, r *http.Request) {
+		snap := c.snapshot()
 		w.Header().Set("Content-Type", "application/json")
-		b, _ := json.Marshal(c.Signer.JWKS())
+		if snap.Signer == nil {
+			http.Error(w, `{"keys":[]}`, http.StatusServiceUnavailable)
+			return
+		}
+		b, _ := json.Marshal(snap.Signer.JWKS())
 		_, _ = w.Write(b)
 	})
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
@@ -55,8 +87,15 @@ func (c *Config) Handler() http.Handler {
 }
 
 func (c *Config) handleToken(w http.ResponseWriter, r *http.Request) {
+	c.live.RLock()
+	lim := c.limiter
+	c.live.RUnlock()
+	if !lim.allow() {
+		c.writeHTTPDeny(w, http.StatusTooManyRequests, "temporarily_unavailable", "rate limited", ReasonRateLimited)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
-		writeOAuthErrorCode(w, http.StatusBadRequest, "invalid_request", "malformed form", ReasonInvalidRequest)
+		c.writeHTTPDeny(w, http.StatusBadRequest, "invalid_request", "malformed form", ReasonInvalidRequest)
 		return
 	}
 	req := ExchangeRequest{
@@ -77,6 +116,9 @@ func (c *Config) handleToken(w http.ResponseWriter, r *http.Request) {
 		if res.Error == "access_denied" {
 			status = http.StatusForbidden
 		}
+		if res.ReasonCode == ReasonReplayedToken {
+			status = http.StatusBadRequest
+		}
 		writeOAuthErrorCode(w, status, res.Error, res.ErrorDesc, res.ReasonCode)
 		return
 	}
@@ -88,6 +130,20 @@ func (c *Config) handleToken(w http.ResponseWriter, r *http.Request) {
 		"expires_in":        res.ExpiresIn,
 		"scope":             res.Issued.Scope,
 	})
+}
+
+func (c *Config) writeHTTPDeny(w http.ResponseWriter, status int, oauthErr, desc, reason string) {
+	c.Metrics.Denied.Add(1)
+	if reason == ReasonRateLimited {
+		c.Metrics.RateLimited.Add(1)
+	}
+	if c.Audit != nil {
+		_ = c.Audit.Append(audit.Event{
+			EventType:  "token_denied",
+			ReasonCode: reason,
+		})
+	}
+	writeOAuthErrorCode(w, status, oauthErr, desc, reason)
 }
 
 func writeOAuthErrorCode(w http.ResponseWriter, status int, err, desc, reason string) {
@@ -102,7 +158,9 @@ func writeOAuthErrorCode(w http.ResponseWriter, status int, err, desc, reason st
 
 // Server is a bound STS HTTP server.
 type Server struct {
-	HTTP *http.Server
+	HTTP        *http.Server
+	tlsCertFile string
+	tlsKeyFile  string
 }
 
 func NewServer(cfg *Config) (*Server, error) {
@@ -113,16 +171,27 @@ func NewServer(cfg *Config) (*Server, error) {
 	if err := ValidateBind(bind); err != nil {
 		return nil, err
 	}
-	return &Server{
-		HTTP: &http.Server{
-			Addr:              bind,
-			Handler:           cfg.Handler(),
-			ReadHeaderTimeout: 5 * time.Second,
-		},
-	}, nil
+	if (cfg.TLSCertFile == "") != (cfg.TLSKeyFile == "") {
+		return nil, fmt.Errorf("sts: -tls-cert and -tls-key must be set together")
+	}
+	srv := &http.Server{
+		Addr:              bind,
+		Handler:           cfg.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	if cfg.TLSCertFile != "" {
+		srv.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	return &Server{HTTP: srv, tlsCertFile: cfg.TLSCertFile, tlsKeyFile: cfg.TLSKeyFile}, nil
 }
 
-func (s *Server) ListenAndServe() error              { return s.HTTP.ListenAndServe() }
+func (s *Server) ListenAndServe() error {
+	if s.tlsCertFile != "" {
+		return s.HTTP.ListenAndServeTLS(s.tlsCertFile, s.tlsKeyFile)
+	}
+	return s.HTTP.ListenAndServe()
+}
+
 func (s *Server) Shutdown(ctx context.Context) error { return s.HTTP.Shutdown(ctx) }
 func (s *Server) Close() error                       { return s.HTTP.Close() }
 func (s *Server) Addr() string                       { return s.HTTP.Addr }

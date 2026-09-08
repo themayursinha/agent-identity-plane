@@ -33,6 +33,7 @@ type ActorChain struct {
 // Verifier checks STS-issued tokens.
 type Verifier struct {
 	Keys   token.JWKS
+	KeysFn func() (token.JWKS, error)
 	Issuer string
 	Now    func() time.Time
 }
@@ -44,8 +45,22 @@ func (v *Verifier) now() time.Time {
 	return time.Now().UTC()
 }
 
+func (v *Verifier) keys() (token.JWKS, error) {
+	if v != nil && v.KeysFn != nil {
+		return v.KeysFn()
+	}
+	if v == nil {
+		return token.JWKS{}, token.ErrUnknownKey
+	}
+	return v.Keys, nil
+}
+
 func (v *Verifier) Verify(raw, audience string) (ActorChain, error) {
-	_, c, err := token.Verify(raw, v.Keys)
+	ks, err := v.keys()
+	if err != nil {
+		return ActorChain{}, err
+	}
+	_, c, err := token.Verify(raw, ks)
 	if err != nil {
 		return ActorChain{}, err
 	}

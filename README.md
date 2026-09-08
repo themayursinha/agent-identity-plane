@@ -65,7 +65,8 @@ agent-identity-plane serve \
   -signing-key testdata/sts-ed25519.json \
   -workload-keys testdata/workloads.json \
   -idp-jwks testdata/idp-jwks.json \
-  -audit-log ./sts-audit.jsonl
+  -audit-log ./sts-audit.jsonl \
+  -replay-log ./sts-replay.jsonl
 ```
 
 ## What it enforces
@@ -109,11 +110,12 @@ CLI: `serve`, `registry lint`, `token inspect|verify`, `trace`, `keys generate`,
 - **Self-hosted:** single Go binary; standard library only
 - **Loopback by default:** `-listen` rejects `0.0.0.0` and `[::]`
 - **Honest SPIFFE claim:** JWT-SVID verification is JWKS-based and fixture-tested; this is not a live SPIRE / Workload API deployment
+- **v0.2 operability:** overlapping STS kids, durable `jti` replay at exchange, atomic SIGHUP identity snapshot, optional TLS, `/readyz` + `/metrics`. Not a production identity plane.
 - **Not a host sandbox and not an MCP policy proxy**
 
 ## Documentation
 
-[Architecture](docs/architecture.md) · [Token profile](docs/token-profile.md) · [Registry model](docs/registry-model.md) · [Threat model](docs/threat-model.md) · [Standards alignment](docs/standards-alignment.md) · [Visor integration](docs/visor-integration.md)
+[Architecture](docs/architecture.md) · [Token profile](docs/token-profile.md) · [Registry model](docs/registry-model.md) · [Threat model](docs/threat-model.md) · [Standards alignment](docs/standards-alignment.md) · [Visor integration](docs/visor-integration.md) · [Operations](docs/operations.md)
 
 ## Development
 

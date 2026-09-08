@@ -1,8 +1,8 @@
 # Token profile
 
-Minted tokens are compact JWS JWTs. The STS signs only with EdDSA (Ed25519).
-Verification accepts EdDSA, ES256 (P-256), and RS256 so JWT-SVIDs from a
-SPIRE OIDC JWKS bundle can be used as actor tokens.
+Minted tokens are compact JWS JWTs. The STS signs only with EdDSA (Ed25519). A keyring may list several kids;
+minting uses `active_kid`. Verification accepts EdDSA, ES256 (P-256), and
+RS256 so JWT-SVIDs from a SPIRE OIDC JWKS bundle can be used as actor tokens.
 
 ## Header
 

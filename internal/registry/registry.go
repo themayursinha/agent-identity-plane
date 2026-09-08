@@ -1,13 +1,13 @@
 package registry
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/themayursinha/agent-identity-plane/internal/jsonutil"
 )
 
 var (
@@ -51,17 +51,15 @@ type Registry struct {
 
 // LoadJSON strictly decodes a registry document.
 func LoadJSON(raw []byte) (*Registry, error) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
 	var f File
-	if err := dec.Decode(&f); err != nil {
+	if err := jsonutil.UnmarshalStrict(raw, &f); err != nil {
+		if errors.Is(err, jsonutil.ErrTrailing) {
+			return nil, ErrTrailingJSON
+		}
 		if isUnknownField(err) {
 			return nil, fmt.Errorf("%w: %v", ErrUnknownField, err)
 		}
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	if dec.More() {
-		return nil, ErrTrailingJSON
 	}
 	return New(f)
 }

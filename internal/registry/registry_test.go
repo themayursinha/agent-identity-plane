@@ -109,4 +109,8 @@ func TestTrailingJSON(t *testing.T) {
 	if err != ErrTrailingJSON {
 		t.Fatalf("got %v", err)
 	}
+	_, err = LoadJSON([]byte(valid + ` }`))
+	if err != ErrTrailingJSON {
+		t.Fatalf("trailing closer: %v", err)
+	}
 }

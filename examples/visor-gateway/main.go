@@ -22,7 +22,8 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:8090", "listen address")
 	audience := flag.String("audience", "https://mcp-gateway.example.test", "expected token audience")
 	issuer := flag.String("issuer", "https://sts.example.test", "STS issuer")
-	jwksPath := flag.String("jwks", "", "STS JWKS file")
+	jwksPath := flag.String("jwks", "", "STS JWKS file (re-read on each verify)")
+	jwksURL := flag.String("jwks-url", "", "STS JWKS URL (fetched on each verify)")
 	shortName := flag.Bool("client-short-name", true, "derive visor --client-id from the last URI segment")
 	identityOnly := flag.Bool("identity-only", false, "verify and return mapping headers without spawning mcp-visor")
 	visorBin := flag.String("visor-bin", "", "path to mcp-visor binary")
@@ -35,21 +36,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	if *jwksPath == "" {
-		fmt.Fprintln(os.Stderr, "error: -jwks is required")
+	if *jwksPath == "" && *jwksURL == "" {
+		fmt.Fprintln(os.Stderr, "error: -jwks or -jwks-url is required")
 		os.Exit(1)
 	}
-	raw, err := os.ReadFile(*jwksPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	ks, err := token.ParseJWKS(raw)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	v := &verify.Verifier{Keys: ks, Issuer: *issuer}
+	v := &verify.Verifier{Issuer: *issuer, KeysFn: liveJWKS(*jwksPath, *jwksURL)}
 	opt := visoradapter.Options{ShortName: *shortName}
 
 	mux := http.NewServeMux()
@@ -97,5 +88,31 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func liveJWKS(path, url string) func() (token.JWKS, error) {
+	return func() (token.JWKS, error) {
+		if url != "" {
+			client := &http.Client{Timeout: 2 * time.Second}
+			resp, err := client.Get(url)
+			if err != nil {
+				return token.JWKS{}, err
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return token.JWKS{}, fmt.Errorf("jwks url status %d", resp.StatusCode)
+			}
+			raw, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return token.JWKS{}, err
+			}
+			return token.ParseJWKS(raw)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return token.JWKS{}, err
+		}
+		return token.ParseJWKS(raw)
 	}
 }
