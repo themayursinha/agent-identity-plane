@@ -11,7 +11,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
 
-var version = "v0.1.0"
+var version = "v0.2.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -68,7 +68,8 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `agent-identity-plane %s
 
 Commands:
-  serve                 Run the STS on a loopback bind address
+  serve                 Run the STS (loopback default; SIGHUP reloads registry and keys)
+
   registry lint FILE    Strict-decode and validate a registry JSON file
   token inspect TOKEN   Decode a JWT without verifying the signature
   token verify ...      Verify a JWT against a JWKS and audience

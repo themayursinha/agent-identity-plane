@@ -36,6 +36,13 @@ is written (AI8), and no token is issued.
 Subcommands: `serve`, `registry lint`, `token inspect`, `token verify`,
 `trace`, `keys generate`, `demo`, `version`.
 
+`serve` loads a 0600 signing key or keyring (`active_kid` + `keys`),
+rejects group/world-readable key files, optional `-tls-cert`/`-tls-key`,
+and `-rate-limit` (default 30/s). SIGHUP reloads registry and signing
+material; an invalid file keeps the previous snapshot.
+
 A deny is an authorization result (HTTP 400 with `error` / `error_description`
 and a reason code), not a process failure. Process failure is reserved for
-unreadable config, unspecified bind addresses, and malformed registry files.
+unreadable config, unspecified bind addresses, open signing-key modes, and
+malformed registry files at startup. Reload failures are logged and do not
+exit the process.

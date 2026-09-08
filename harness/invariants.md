@@ -62,3 +62,28 @@ closed. No partial token is issued.
 
 `serve` rejects bind hosts that are empty or unspecified (`0.0.0.0`, `::`).
 Default listen address is `127.0.0.1:8080`.
+
+## AI12 — STS subject tokens are single-use at exchange
+
+An STS-issued subject token (`jti`) is consumed on the first successful
+exchange. A second exchange with the same `jti` before expiry is denied
+(`replayed_token`) and issues no token. First-hop IdP user tokens are not
+consumed this way.
+
+## AI13 — Rotatable signing JWKS
+
+The STS signing ring may contain multiple Ed25519 kids. Minting uses
+`active_kid`. Verification JWKS includes every key in the ring so tokens
+minted under a previous kid remain valid until that kid is removed.
+
+## AI14 — Reload is fail-closed
+
+SIGHUP (or `Reloader.Reload`) loads the new registry and signing files
+completely before swapping. An invalid document leaves the previous
+snapshot in place and the process stays up.
+
+## AI15 — Signing-key file mode
+
+On-disk STS signing material must be a regular file that is not
+group- or world-readable. Open modes fail closed at load and reload.
+

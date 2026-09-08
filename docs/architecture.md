@@ -57,3 +57,16 @@ no longer an unauthenticated string. See [visor-integration.md](visor-integratio
 
 `serve` and `visor-gateway` reject unspecified hosts (`0.0.0.0`, `::`, empty
 host). Default is `127.0.0.1`.
+
+## Operability (v0.2)
+
+- Signing material is a 0600 Ed25519 key file or a keyring document
+  (`active_kid` + `keys`). Mint uses the active kid; `/jwks.json` lists
+  every key in the ring.
+- `SIGHUP` reloads registry and signing files. Invalid documents keep
+  the previous snapshot.
+- Optional `-tls-cert` / `-tls-key`. Without them, put a TLS reverse
+  proxy in front and keep the STS on loopback (see
+  [operations.md](operations.md)).
+- `GET /readyz` and `GET /metrics`. `POST /oauth/token` is rate-limited
+  (`-rate-limit`, default 30/s).

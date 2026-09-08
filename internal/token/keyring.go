@@ -1,0 +1,174 @@
+package token
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sync"
+)
+
+// Keyring is a rotatable set of Ed25519 STS keys. Minting always uses
+// the active kid; verification JWKS includes every key in the ring so
+// previously minted tokens remain valid until the old kid is removed.
+type Keyring struct {
+	mu        sync.RWMutex
+	activeKID string
+	byKID     map[string]*Signer
+}
+
+// NewKeyring builds a ring. activeKID must name one of keys.
+func NewKeyring(activeKID string, keys []*KeyFile) (*Keyring, error) {
+	k := &Keyring{}
+	if err := k.Replace(activeKID, keys); err != nil {
+		return nil, err
+	}
+	return k, nil
+}
+
+// Replace swaps the ring. On error the previous ring is left unchanged.
+func (k *Keyring) Replace(activeKID string, keys []*KeyFile) error {
+	if k == nil {
+		return ErrInvalidKey
+	}
+	if len(keys) == 0 {
+		return fmt.Errorf("%w: signing ring is empty", ErrInvalidKey)
+	}
+	if activeKID == "" {
+		return fmt.Errorf("%w: active_kid required", ErrInvalidKey)
+	}
+	next := make(map[string]*Signer, len(keys))
+	for _, f := range keys {
+		if f == nil || f.KID == "" {
+			return fmt.Errorf("%w: signing key missing kid", ErrInvalidKey)
+		}
+		if _, ok := next[f.KID]; ok {
+			return fmt.Errorf("%w: duplicate kid %s", ErrInvalidKey, f.KID)
+		}
+		s, err := SignerFromKeyFile(f)
+		if err != nil {
+			return err
+		}
+		next[f.KID] = s
+	}
+	if _, ok := next[activeKID]; !ok {
+		return fmt.Errorf("%w: active kid %q not in ring", ErrUnknownKey, activeKID)
+	}
+	k.mu.Lock()
+	k.activeKID = activeKID
+	k.byKID = next
+	k.mu.Unlock()
+	return nil
+}
+
+func (k *Keyring) ActiveKID() string {
+	if k == nil {
+		return ""
+	}
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	return k.activeKID
+}
+
+func (k *Keyring) SignClaims(c Claims) (string, error) {
+	if k == nil {
+		return "", ErrMissingPrivateKey
+	}
+	k.mu.RLock()
+	s := k.byKID[k.activeKID]
+	k.mu.RUnlock()
+	if s == nil {
+		return "", ErrMissingPrivateKey
+	}
+	return s.SignClaims(c)
+}
+
+func (k *Keyring) JWKS() JWKS {
+	if k == nil {
+		return JWKS{}
+	}
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	out := make([]JWK, 0, len(k.byKID))
+	if s := k.byKID[k.activeKID]; s != nil {
+		out = append(out, s.PublicJWK())
+	}
+	for kid, s := range k.byKID {
+		if kid == k.activeKID {
+			continue
+		}
+		out = append(out, s.PublicJWK())
+	}
+	return JWKS{Keys: out}
+}
+
+type keyringFile struct {
+	ActiveKID string    `json:"active_kid"`
+	Keys      []KeyFile `json:"keys"`
+}
+
+// ParseSigningMaterial accepts a single KeyFile or a keyring document
+// with active_kid and keys.
+func ParseSigningMaterial(raw []byte) (activeKID string, keys []*KeyFile, err error) {
+	var peek struct {
+		ActiveKID string          `json:"active_kid"`
+		Keys      json.RawMessage `json:"keys"`
+		KID       string          `json:"kid"`
+	}
+	if err := json.Unmarshal(raw, &peek); err != nil {
+		return "", nil, fmt.Errorf("%w: %v", ErrInvalidKey, err)
+	}
+	if len(peek.Keys) > 0 {
+		var wrap keyringFile
+		if err := json.Unmarshal(raw, &wrap); err != nil {
+			return "", nil, fmt.Errorf("%w: %v", ErrInvalidKey, err)
+		}
+		if wrap.ActiveKID == "" {
+			return "", nil, fmt.Errorf("%w: active_kid required", ErrInvalidKey)
+		}
+		out := make([]*KeyFile, 0, len(wrap.Keys))
+		for i := range wrap.Keys {
+			kf := wrap.Keys[i]
+			out = append(out, &kf)
+		}
+		return wrap.ActiveKID, out, nil
+	}
+	var kf KeyFile
+	if err := json.Unmarshal(raw, &kf); err != nil {
+		return "", nil, fmt.Errorf("%w: %v", ErrInvalidKey, err)
+	}
+	if kf.KID == "" {
+		return "", nil, fmt.Errorf("%w: kid required", ErrInvalidKey)
+	}
+	return kf.KID, []*KeyFile{&kf}, nil
+}
+
+// CheckSecretFileMode fails closed if path is group- or world-accessible.
+func CheckSecretFileMode(path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("%w: signing key is not a regular file", ErrInvalidKey)
+	}
+	if perm := fi.Mode().Perm(); perm&0o077 != 0 {
+		return fmt.Errorf("%w: signing key %s must not be group/world-readable (mode %o)", ErrInvalidKey, path, perm)
+	}
+	return nil
+}
+
+// LoadSigningFile reads a 0600 key or keyring file.
+func LoadSigningFile(path string) (*Keyring, error) {
+	if err := CheckSecretFileMode(path); err != nil {
+		return nil, err
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	active, keys, err := ParseSigningMaterial(raw)
+	if err != nil {
+		return nil, err
+	}
+	return NewKeyring(active, keys)
+}

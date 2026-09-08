@@ -50,7 +50,7 @@ func TestCLIDemoAndLint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "v0.1.0") {
+	if !strings.Contains(string(out), "v0.2.0") {
 		t.Fatalf("version %s", out)
 	}
 }

@@ -1,0 +1,143 @@
+package token
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestKeyringRotationKeepsOldKid(t *testing.T) {
+	old := mustKey(t, "sts-1")
+	newer := mustKey(t, "sts-2")
+	kr, err := NewKeyring("sts-1", []*KeyFile{old})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := kr.SignClaims(Claims{
+		Iss: "https://sts.example.test",
+		Sub: "user1",
+		Aud: Audience{"next"},
+		Exp: time.Now().Add(time.Minute).Unix(),
+		Jti: "j1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := kr.Replace("sts-2", []*KeyFile{old, newer}); err != nil {
+		t.Fatal(err)
+	}
+	if kr.ActiveKID() != "sts-2" {
+		t.Fatalf("active %s", kr.ActiveKID())
+	}
+	if _, _, err := Verify(raw, kr.JWKS()); err != nil {
+		t.Fatalf("old token should verify during overlap: %v", err)
+	}
+	raw2, err := kr.SignClaims(Claims{
+		Iss: "https://sts.example.test",
+		Sub: "user1",
+		Aud: Audience{"next"},
+		Exp: time.Now().Add(time.Minute).Unix(),
+		Jti: "j2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _, _, err := ParseUnverified(raw2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.KID != "sts-2" {
+		t.Fatalf("kid %s", h.KID)
+	}
+	if err := kr.Replace("sts-2", []*KeyFile{newer}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Verify(raw, kr.JWKS()); err != ErrUnknownKey && err != ErrBadSignature {
+		t.Fatalf("retired kid should fail, got %v", err)
+	}
+}
+
+func TestKeyringReplaceFailsClosed(t *testing.T) {
+	k1 := mustKey(t, "sts-1")
+	kr, err := NewKeyring("sts-1", []*KeyFile{k1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := kr.Replace("missing", []*KeyFile{k1}); err == nil {
+		t.Fatal("expected error")
+	}
+	if kr.ActiveKID() != "sts-1" {
+		t.Fatalf("ring mutated on failed replace: %s", kr.ActiveKID())
+	}
+}
+
+func TestParseSigningMaterialKeyring(t *testing.T) {
+	k1 := mustKey(t, "sts-1")
+	k2 := mustKey(t, "sts-2")
+	doc := keyringFile{ActiveKID: "sts-2", Keys: []KeyFile{*k1, *k2}}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, keys, err := ParseSigningMaterial(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active != "sts-2" || len(keys) != 2 {
+		t.Fatalf("%s %d", active, len(keys))
+	}
+}
+
+func TestParseSigningMaterialSingle(t *testing.T) {
+	k1 := mustKey(t, "sts-1")
+	raw, err := json.Marshal(k1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, keys, err := ParseSigningMaterial(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active != "sts-1" || len(keys) != 1 {
+		t.Fatalf("%s %d", active, len(keys))
+	}
+}
+
+func TestCheckSecretFileMode(t *testing.T) {
+	dir := t.TempDir()
+	okPath := filepath.Join(dir, "ok.json")
+	if err := os.WriteFile(okPath, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckSecretFileMode(okPath); err != nil {
+		t.Fatal(err)
+	}
+	openPath := filepath.Join(dir, "open.json")
+	if err := os.WriteFile(openPath, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckSecretFileMode(openPath); err == nil {
+		t.Fatal("expected mode error")
+	}
+}
+
+func TestLoadSigningFile(t *testing.T) {
+	kf := mustKey(t, "sts-1")
+	raw, err := json.MarshalIndent(kf, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "sts.json")
+	if err := os.WriteFile(path, append(raw, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	kr, err := LoadSigningFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kr.ActiveKID() != "sts-1" {
+		t.Fatalf("kid %s", kr.ActiveKID())
+	}
+}

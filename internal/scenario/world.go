@@ -81,7 +81,7 @@ func NewWorld(now time.Time, auditLog *audit.Logger) (*World, error) {
 	if err != nil {
 		return nil, err
 	}
-	signer, err := token.SignerFromKeyFile(stsKey)
+	signer, err := token.NewKeyring(stsKey.KID, []*token.KeyFile{stsKey})
 	if err != nil {
 		return nil, err
 	}
@@ -113,6 +113,7 @@ func NewWorld(now time.Time, auditLog *audit.Logger) (*World, error) {
 		IdPIssuer: IdPIssuer,
 		Audit:     auditLog,
 		Now:       func() time.Time { return now },
+		Replay:    sts.NewReplayCache(func() time.Time { return now }),
 	}
 	return &World{
 		Now:      now,

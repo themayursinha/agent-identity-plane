@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/themayursinha/agent-identity-plane/internal/attest"
@@ -34,22 +36,71 @@ const (
 	ReasonChainIntegrity         = "chain_integrity"
 	ReasonAgentNotYetValid       = "agent_not_yet_valid"
 	ReasonAgentExpired           = "agent_expired"
+	ReasonReplayedToken          = "replayed_token"
+	ReasonRateLimited            = "rate_limited"
 )
 
 var ErrUnspecifiedBind = errors.New("sts: listen address must not be unspecified")
 
+// Metrics are process-local STS counters exposed at GET /metrics.
+type Metrics struct {
+	Minted      atomic.Int64
+	Denied      atomic.Int64
+	Replays     atomic.Int64
+	Reloads     atomic.Int64
+	ReloadFails atomic.Int64
+	RateLimited atomic.Int64
+}
+
 // Config is the STS runtime configuration.
 type Config struct {
-	Issuer    string
-	TTL       time.Duration
-	Bind      string
-	Registry  *registry.Registry
-	Signer    *token.Signer
-	Attestor  attest.WorkloadAttestor
-	IdPKeys   token.JWKS
-	IdPIssuer string
-	Audit     *audit.Logger
-	Now       func() time.Time
+	live sync.RWMutex
+
+	Issuer      string
+	TTL         time.Duration
+	Bind        string
+	Registry    *registry.Registry
+	Signer      *token.Keyring
+	Attestor    attest.WorkloadAttestor
+	IdPKeys     token.JWKS
+	IdPIssuer   string
+	Audit       *audit.Logger
+	Now         func() time.Time
+	Replay      *ReplayCache
+	RateLimit   float64 // token-exchange requests per second; 0 disables
+	TLSCertFile string
+	TLSKeyFile  string
+	Metrics     Metrics
+
+	limiter *tokenBucket
+}
+
+// SetRegistry replaces the live registry. Invalid callers should not
+// invoke this; Reloader.Reload fail-closes by keeping the previous value.
+func (c *Config) SetRegistry(r *registry.Registry) {
+	if c == nil || r == nil {
+		return
+	}
+	c.live.Lock()
+	c.Registry = r
+	c.live.Unlock()
+}
+
+// ReplaceKeyring swaps signing material in place.
+func (c *Config) ReplaceKeyring(kr *token.Keyring) error {
+	if c == nil || kr == nil || kr.ActiveKID() == "" {
+		return token.ErrInvalidKey
+	}
+	c.live.Lock()
+	c.Signer = kr
+	c.live.Unlock()
+	return nil
+}
+
+func (c *Config) snapshot() (*registry.Registry, *token.Keyring) {
+	c.live.RLock()
+	defer c.live.RUnlock()
+	return c.Registry, c.Signer
 }
 
 func (c *Config) now() time.Time {
@@ -114,6 +165,7 @@ func (c *Config) Exchange(ctx context.Context, req ExchangeRequest) ExchangeResu
 			Workload:   out.workload,
 		}
 		if out.ReasonCode == ReasonOK {
+			c.Metrics.Minted.Add(1)
 			ev.EventType = "token_minted"
 			ev.Txn = out.Issued.Txn
 			ev.JTI = out.Issued.Jti
@@ -122,6 +174,10 @@ func (c *Config) Exchange(ctx context.Context, req ExchangeRequest) ExchangeResu
 			ev.Hops = append([]string{out.Issued.Sub}, out.Issued.ActorSubs()...)
 			ev.Scope = out.Issued.Scope
 		} else {
+			c.Metrics.Denied.Add(1)
+			if out.ReasonCode == ReasonReplayedToken {
+				c.Metrics.Replays.Add(1)
+			}
 			ev.EventType = "token_denied"
 			ev.Scope = req.Scope
 		}
@@ -131,7 +187,8 @@ func (c *Config) Exchange(ctx context.Context, req ExchangeRequest) ExchangeResu
 }
 
 func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
-	if c.Signer == nil || c.Registry == nil || c.Attestor == nil || c.Issuer == "" {
+	reg, signer := c.snapshot()
+	if signer == nil || reg == nil || c.Attestor == nil || c.Issuer == "" {
 		return deny(ReasonInvalidRequest, "invalid_request", "sts not configured")
 	}
 	if req.GrantType != "" && req.GrantType != GrantTokenExchange {
@@ -153,12 +210,12 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 	}
 
 	now := c.now()
-	agent, err := c.Registry.Authorize(req.AgentID, wl.ID, req.Audience, now)
+	agent, err := reg.Authorize(req.AgentID, wl.ID, req.Audience, now)
 	if err != nil {
 		return deny(mapRegistryErr(err), "access_denied", err.Error())
 	}
 
-	sub, fromSTS, err := c.verifySubject(req.SubjectToken)
+	sub, fromSTS, err := c.verifySubject(req.SubjectToken, signer)
 	if err != nil {
 		return deny(ReasonInvalidSubjectToken, "invalid_request", err.Error())
 	}
@@ -205,6 +262,15 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 		return deny(ReasonChainIntegrity, "invalid_request", "missing txn")
 	}
 
+	if fromSTS {
+		if err := c.Replay.Consume(sub.Jti, sub.Exp); err != nil {
+			if errors.Is(err, ErrReplay) || errors.Is(err, errEmptyJTI) {
+				return deny(ReasonReplayedToken, "invalid_grant", err.Error())
+			}
+			return deny(ReasonInvalidRequest, "server_error", err.Error())
+		}
+	}
+
 	ttl := c.ttl()
 	claims := token.Claims{
 		Iss:      c.Issuer,
@@ -224,7 +290,7 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 		claims.Purp = sub.Purp
 	}
 
-	raw, err := c.Signer.SignClaims(claims)
+	raw, err := signer.SignClaims(claims)
 	if err != nil {
 		return deny(ReasonInvalidRequest, "server_error", err.Error())
 	}
@@ -239,12 +305,14 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 	}
 }
 
-func (c *Config) verifySubject(raw string) (token.Claims, bool, error) {
-	if _, claims, err := token.Verify(raw, c.Signer.JWKS()); err == nil {
-		if claims.Iss != c.Issuer {
-			return token.Claims{}, false, token.ErrIssuerMismatch
+func (c *Config) verifySubject(raw string, signer *token.Keyring) (token.Claims, bool, error) {
+	if signer != nil {
+		if _, claims, err := token.Verify(raw, signer.JWKS()); err == nil {
+			if claims.Iss != c.Issuer {
+				return token.Claims{}, false, token.ErrIssuerMismatch
+			}
+			return claims, true, nil
 		}
-		return claims, true, nil
 	}
 	if _, claims, err := token.Verify(raw, c.IdPKeys); err == nil {
 		if c.IdPIssuer != "" && claims.Iss != c.IdPIssuer {
