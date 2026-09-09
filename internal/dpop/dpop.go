@@ -14,7 +14,21 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/token"
 )
 
-const Typ = "dpop+jwt"
+const (
+	Typ = "dpop+jwt"
+	// ReplayPrefix namespaces DPoP proof jtis so they cannot occupy the
+	// same consume key as an STS subject-token jti when both are stored
+	// in one replay log.
+	ReplayPrefix = "dpop:"
+)
+
+// ReplayJTI is the durable consume key for a verified proof jti.
+func ReplayJTI(jti string) string {
+	if jti == "" {
+		return ""
+	}
+	return ReplayPrefix + jti
+}
 
 var (
 	ErrMissingProof = errors.New("dpop: missing DPoP header")

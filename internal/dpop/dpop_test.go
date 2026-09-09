@@ -35,6 +35,18 @@ func TestRequestURIIgnoresForwardedAndQuery(t *testing.T) {
 	}
 }
 
+func TestReplayJTINamespacesProofs(t *testing.T) {
+	if ReplayJTI("") != "" {
+		t.Fatal("empty")
+	}
+	if ReplayJTI("jti-stolen") != "dpop:jti-stolen" {
+		t.Fatalf("%q", ReplayJTI("jti-stolen"))
+	}
+	if ReplayJTI("jti-stolen") == "jti-stolen" {
+		t.Fatal("unprefixed")
+	}
+}
+
 func TestProveAndVerify(t *testing.T) {
 	kf, err := token.GenerateEd25519("wl")
 	if err != nil {

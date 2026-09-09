@@ -42,7 +42,7 @@ This document is an engineering threat model, not a compliance claim.
 - Not a host sandbox. A compromised workload that *is* registered for an agent can mint tokens for that agent until the workload or agent is denylisted.
 - Not mcp-visor action policy. A valid actor chain can still be denied by visor tool rules.
 - Revocation is TTL + durable `jti` replay at exchange plus an exact-ID denylist (agents, workloads, principals) at mint and at visor-gateway. Already-minted tokens are stopped at the PEP when the gateway re-reads the denylist.
-- visor-gateway requires RFC 9449 DPoP bound to minted `cnf.jkt` (the actor-token verification key for that hop). There is no DPoP nonce. STS exchange still uses `actor_token`, not DPoP. This is not a Production identity plane.
+- visor-gateway requires RFC 9449 DPoP bound to minted `cnf.jkt` (a workload-possessed key). There is no DPoP nonce. STS exchange still uses `actor_token`, with optional token-endpoint DPoP to bind `cnf.jkt`. This is not a Production identity plane.
 - visor-gateway `-backend` is an HTTP reverse-proxy. mcp-visor `serve` is stdio; use `-identity-only` and start visor with the derived `--client-id` / `--session-id`.
 - `-client-short-name` is opt-in. Last URI segments are not unique across prefixes; the default client-id is the full `act.sub`.
 - Cross-domain federation (OAuth Identity Chaining) is not implemented.

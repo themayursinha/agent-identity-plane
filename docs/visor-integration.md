@@ -39,7 +39,7 @@ A future mcp-visor PR could replace spoofable `--client-id` with an in-proxy
 token gate:
 
 - New flag `-identity-jwks` / `-identity-issuer` / `-identity-audience`
-- On each `tools/call`, verify `Authorization: Bearer` (or a JSON-RPC param)
+- On each `tools/call`, verify `Authorization: Bearer` or `DPoP` (or a JSON-RPC param)
   and set `ClientID` from `act.sub` and session id from `txn`
 - Optional `lineage_require` tool rule can read typed lineage fields that the
   adapter already emits (`principal`, `acting_agent`, `txn`)

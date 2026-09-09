@@ -152,7 +152,8 @@ func (l LocalExchanger) Exchange(ctx context.Context, req sts.ExchangeRequest) (
 }
 
 // Tripper is an http.RoundTripper that exchanges for the destination
-// audience and injects Authorization: Bearer.
+// audience and injects Authorization. Resource DPoP uses the DPoP
+// scheme (RFC 9449); hops without a proof key use Bearer.
 type Tripper struct {
 	Base       http.RoundTripper
 	Exchanger  Exchanger
@@ -196,7 +197,11 @@ func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	clone := req.Clone(req.Context())
-	clone.Header.Set("Authorization", "Bearer "+res.Token)
+	scheme := "Bearer"
+	if t.ProofKey != nil {
+		scheme = "DPoP"
+	}
+	clone.Header.Set("Authorization", scheme+" "+res.Token)
 	if t.ProofKey != nil {
 		kf, err := t.ProofKey(req.Context())
 		if err != nil {
@@ -229,7 +234,7 @@ func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
 func Middleware(v *verify.Verifier, audience string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			raw := BearerToken(r.Header.Get("Authorization"))
+			raw := AccessToken(r.Header.Get("Authorization"))
 			if raw == "" {
 				http.Error(w, "missing bearer token", http.StatusUnauthorized)
 				return
@@ -246,10 +251,18 @@ func Middleware(v *verify.Verifier, audience string) func(http.Handler) http.Han
 	}
 }
 
-func BearerToken(h string) string {
-	const p = "Bearer "
-	if len(h) > len(p) && strings.EqualFold(h[:len(p)], p) {
-		return strings.TrimSpace(h[len(p):])
+// AccessToken returns the credential from Authorization Bearer or DPoP.
+func AccessToken(h string) string {
+	h = strings.TrimSpace(h)
+	for _, p := range []string{"Bearer ", "DPoP "} {
+		if len(h) > len(p) && strings.EqualFold(h[:len(p)], p) {
+			return strings.TrimSpace(h[len(p):])
+		}
 	}
 	return ""
+}
+
+// BearerToken is AccessToken.
+func BearerToken(h string) string {
+	return AccessToken(h)
 }

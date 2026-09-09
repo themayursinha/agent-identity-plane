@@ -90,8 +90,24 @@ func TestMiddlewareAndTripper(t *testing.T) {
 	if resp2.StatusCode != 204 || seen == "" {
 		t.Fatalf("status %d auth %q", resp2.StatusCode, seen)
 	}
-	if _, err := w.Verifier.Verify(seen[len("Bearer "):], scenario.Invest); err != nil {
+	if !strings.HasPrefix(seen, "DPoP ") {
+		t.Fatalf("auth %q", seen)
+	}
+	if _, err := w.Verifier.Verify(AccessToken(seen), scenario.Invest); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAccessTokenAcceptsDPoPScheme(t *testing.T) {
+	tok := "header.payload.sig"
+	if got := AccessToken("DPoP " + tok); got != tok {
+		t.Fatalf("%q", got)
+	}
+	if got := AccessToken("Bearer " + tok); got != tok {
+		t.Fatalf("%q", got)
+	}
+	if AccessToken("Basic x") != "" {
+		t.Fatal("basic")
 	}
 }
 

@@ -140,7 +140,7 @@ func (c *Config) handlePEP(w http.ResponseWriter, r *http.Request) {
 		c.writeDeny(w, http.StatusTooManyRequests, ReasonRateLimited, "rate limited", nil)
 		return
 	}
-	raw := a2a.BearerToken(r.Header.Get("Authorization"))
+	raw := a2a.AccessToken(r.Header.Get("Authorization"))
 	if raw == "" {
 		c.writeDeny(w, http.StatusUnauthorized, ReasonMissingToken, "missing bearer token", nil)
 		return
@@ -252,7 +252,7 @@ func (c *Config) requireDPoP(w http.ResponseWriter, r *http.Request, accessToken
 		c.writeDenyDPoP(w, http.StatusUnauthorized, ReasonInvalidDPoP, err.Error(), m)
 		return err
 	}
-	if err := c.ProofReplay.Consume(proof.JTI, proof.IAT); err != nil {
+	if err := c.ProofReplay.Consume(dpop.ReplayJTI(proof.JTI), proof.IAT); err != nil {
 		if errors.Is(err, sts.ErrReplay) {
 			c.writeDenyDPoP(w, http.StatusUnauthorized, ReasonReplayedDPoP, "dpop proof jti already used", m)
 			return err

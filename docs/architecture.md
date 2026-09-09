@@ -47,7 +47,7 @@ JWKS are first hops. Cross-signing (IdP key, STS `iss`) is rejected.
 
 Minted claims: immutable `sub` and `txn`, single `aud`, nested RFC 8693 `act`,
 flat `actchain`, narrowed `scope`, `jti`, `exp` (default 120s), and `cnf.jkt`
-(RFC 7800) of the actor-token verification key for that hop.
+(RFC 7800) of a workload-possessed DPoP key for that hop.
 
 ## Enforcement vs mcp-visor
 
@@ -129,6 +129,8 @@ path; no query/fragment; `X-Forwarded-*` ignored), access-token hash
 (`ath`), and `iat` within clock skew. Clients mint proofs with `htu`
 from the outbound URL (scheme+host), not from local TLS state.
 Proof `jti` values are consumed
-in `-dpop-replay` through `iat + ClockSkew`. Missing `cnf`, missing or
+in `-dpop-replay` through `iat + ClockSkew`, namespaced (`dpop:` prefix)
+so they cannot collide with STS subject-token jtis if a process shares
+a consume map. Missing `cnf`, missing or
 invalid DPoP, or a replayed proof is 401 with no backend. This is not
 a DPoP nonce deployment and not a Production identity plane.

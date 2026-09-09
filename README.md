@@ -135,7 +135,7 @@ CLI: `serve`, `visor-gateway`, `registry lint`, `token inspect|verify`, `trace`,
 - **v0.3 visor-gateway:** first-class identity PEP. JWKS file or `https` URL (loopback `http` allowed). Verified `--client-id` / `--session-id`; optional HTTP reverse-proxy that overwrites `X-Visor-*`. mcp-visor is unchanged.
 - **v0.4 live workload JWKS:** `serve` may fetch JWT-SVID keys from `-spiffe-jwks-url` or `-spiffe-oidc-issuer` (same URL/TLS policy as visor-gateway). Still not Workload API.
 - **v0.5 agent denylist:** owned JSON of agent, workload, and principal IDs. Exact match. Enforced at mint and at visor-gateway (in-flight hops).
-- **v0.6 DPoP at visor-gateway:** minted tokens carry `cnf.jkt` of the actor-token verification key. visor-gateway requires a DPoP proof (`htm`/`htu`/`ath`/`jti`) whose JWK thumbprint matches, with durable proof-jti replay. Not Production (no DPoP nonce; STS exchange is still actor_token).
+- **v0.6 DPoP at visor-gateway:** minted tokens carry `cnf.jkt` of a workload-possessed key. visor-gateway requires a DPoP proof (`htm`/`htu`/`ath`/`jti`) whose JWK thumbprint matches, with durable proof-jti replay. Not Production (no DPoP nonce; STS exchange is still actor_token).
 - **Not a host sandbox and not an MCP policy proxy**
 
 ## Documentation

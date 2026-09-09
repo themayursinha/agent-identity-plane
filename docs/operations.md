@@ -127,14 +127,18 @@ that would otherwise be allowed. The minted access token's `cnf.jkt`
 must equal the proof JWK thumbprint. Callers prove possession of the
 same workload key that attested the hop. Proof `jti` values are written
 to `-dpop-replay` (JSONL, mode 0600) before allow, through
-`iat + ClockSkew`. Reconstruct `htu` from this request (TLS, Host,
+`iat + ClockSkew`. Token-endpoint proof jtis in the STS `-replay-log`
+are stored as `dpop:` + proof `jti` so they cannot occupy a subject
+token jti. Reconstruct `htu` from this request (TLS, Host,
 path). Do not trust `X-Forwarded-Proto` or `X-Forwarded-Host`.
 Clients that mint a DPoP proof (the A2A tripper) set `htu` from the
 outbound URL scheme and `Host` (then `URL.Host`). `RoundTrip` still has
 `TLS == nil`. JWT-SVID hops must send DPoP on `POST /oauth/token` so
 `cnf.jkt` is a workload key, not the SPIFFE issuer key.
+`token_type` is `DPoP`; visor-gateway and the A2A tripper accept
+`Authorization: DPoP` or `Bearer` plus the `DPoP` proof header.
 There is no DPoP nonce. STS `POST /oauth/token` still uses
-`actor_token`, not DPoP.
+`actor_token` as the grant, not DPoP as the credential.
 
 ## Live JWT-SVID JWKS
 

@@ -161,7 +161,9 @@ on the PEP is reconstructed from this request (https iff TLS is present,
 Callers set proof `htu` from the outbound URL scheme and `Host`
 (`OutboundURI`); local TLS is still nil in `RoundTrip`. `ath` is SHA-256 of the access token. `iat` uses the same clock skew
 as minted tokens. Proof `jti` is single-use in `-dpop-replay` through
-`iat + ClockSkew`. The DPoP header JWK must be a public key. Missing
+`iat + ClockSkew`. Token-endpoint proofs consumed in the STS replay
+log are namespaced (`dpop:` prefix) so a caller-controlled proof `jti`
+cannot occupy a minted subject-token jti. The DPoP header JWK must be a public key. Missing
 `cnf`, missing DPoP, invalid proof, or replay is denied with no
 backend forward. `-dpop-replay` must not alias other exclusive
 identity files. This is not a DPoP nonce deployment and not a

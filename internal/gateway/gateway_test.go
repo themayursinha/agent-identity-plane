@@ -91,6 +91,29 @@ func TestIdentityOnlyGateway(t *testing.T) {
 	}
 }
 
+func TestGatewayAcceptsDPoPAuthorization(t *testing.T) {
+	w := testWorld(t)
+	_, tok, err := w.HappyPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &gateway.Config{
+		Audience:     scenario.Gateway,
+		Verifier:     w.Verifier,
+		Audit:        w.STS.Audit,
+		IdentityOnly: true,
+		ShortName:    true,
+		ProofReplay:  replay(w),
+	}
+	req := pepReq(t, w, http.MethodPost, "/session", tok, scenario.WLInvest)
+	req.Header.Set("Authorization", "DPoP "+tok)
+	rw := httptest.NewRecorder()
+	cfg.Handler().ServeHTTP(rw, req)
+	if rw.Code != 200 {
+		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	}
+}
+
 func TestGatewayDefaultClientIDIsFullActorURI(t *testing.T) {
 	w := testWorld(t)
 	_, tok, err := w.HappyPath()
