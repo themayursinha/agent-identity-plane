@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/denylist"
 	"github.com/themayursinha/agent-identity-plane/internal/gateway"
 	"github.com/themayursinha/agent-identity-plane/internal/scenario"
 	"github.com/themayursinha/agent-identity-plane/internal/token"
@@ -488,5 +489,71 @@ func TestGatewayAuditFailureFailsClosed(t *testing.T) {
 	cfg.Handler().ServeHTTP(deny, httptest.NewRequest(http.MethodPost, "/mcp", nil))
 	if deny.Code != http.StatusServiceUnavailable {
 		t.Fatalf("deny status %d", deny.Code)
+	}
+}
+
+func TestGatewayDeniesListedHop(t *testing.T) {
+	w := testWorld(t)
+	_, tok, err := w.HappyPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := denylist.New(denylist.File{Version: 1, Agents: []string{scenario.Oncall}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &gateway.Config{
+		Audience:     scenario.Gateway,
+		Verifier:     w.Verifier,
+		Audit:        w.STS.Audit,
+		IdentityOnly: true,
+		DenylistFn:   func() (*denylist.List, error) { return d, nil },
+	}
+	req := httptest.NewRequest(http.MethodPost, "/session", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rw := httptest.NewRecorder()
+	cfg.Handler().ServeHTTP(rw, req)
+	if rw.Code != http.StatusUnauthorized {
+		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), denylist.ReasonAgentDenied) {
+		t.Fatalf("body %s", rw.Body.String())
+	}
+}
+
+func TestGatewayDenylistUnavailableNoBackend(t *testing.T) {
+	w := testWorld(t)
+	_, tok, err := w.HappyPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := 0
+	backend := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		called++
+		rw.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(backend.Close)
+	u, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &gateway.Config{
+		Audience: scenario.Gateway,
+		Verifier: w.Verifier,
+		Audit:    w.STS.Audit,
+		Backend:  u,
+		DenylistFn: func() (*denylist.List, error) {
+			return nil, os.ErrNotExist
+		},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rw := httptest.NewRecorder()
+	cfg.Handler().ServeHTTP(rw, req)
+	if rw.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	}
+	if called != 0 {
+		t.Fatalf("backend called %d", called)
 	}
 }

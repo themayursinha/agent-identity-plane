@@ -45,8 +45,8 @@ token gate:
 - Audit `lineage` object on allow/deny, without changing the hash-chain core
 
 Until that lands, visor-gateway is the enforcement point that makes visor
-identity policy meaningful: only a verified chain produces the
-`--client-id` / `--session-id` you pass to visor.
+identity policy meaningful: only a verified chain that is not denylisted
+produces the `--client-id` / `--session-id` you pass to visor.
 
 ## Mapping example
 

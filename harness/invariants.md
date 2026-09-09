@@ -95,10 +95,10 @@ which must wait mint TTL plus `ClockSkew`.
 ## AI14 — Reload is fail-closed
 
 SIGHUP (or `Reloader.Reload`) loads every requested identity document
-completely, then publishes registry and signing ring under one lock.
-An invalid document leaves the previous snapshot in place and the
-process stays up. One request never observes a new registry with an
-old signing ring, or the reverse.
+completely, then publishes registry, signing ring, and denylist under
+one lock. An invalid document leaves the previous snapshot in place and
+the process stays up. One request never observes a new registry with an
+old signing ring or an old denylist, or the reverse.
 
 ## AI15 — Signing-key file mode
 
@@ -132,4 +132,16 @@ JWKS fails closed. Discovery `issuer` and JWT `iss` must equal the
 configured issuer exactly (trailing slash is significant). Keys are
 re-fetched on each `Attest`. `/readyz` fails if a live attestor cannot
 load keys. This is not a SPIRE Workload API client.
+
+## AI18 — Denylist is an exact-ID revocation signal
+
+A configured denylist denies minting when `agent_id`, the attested
+workload, or the verified principal matches an entry exactly
+(trailing slash and last-segment short names are distinct IDs).
+visor-gateway applies the same document on each verify to the
+principal, acting agent, and every non-principal hop, so an
+already-minted chain cannot be forwarded after the hop is listed.
+Owned denylist JSON is strict-decoded. Empty lists are valid.
+Unreadable denylist fails closed. The path must not alias other
+exclusive identity files. This is not DPoP and not a Production claim.
 

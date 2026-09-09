@@ -11,6 +11,7 @@ import (
 
 	"github.com/themayursinha/agent-identity-plane/internal/attest"
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/denylist"
 	"github.com/themayursinha/agent-identity-plane/internal/jsonutil"
 	"github.com/themayursinha/agent-identity-plane/internal/registry"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
@@ -32,6 +33,7 @@ func cmdServe(args []string) error {
 	spiffeOIDC := fs.String("spiffe-oidc-issuer", "", "optional OIDC issuer for JWT-SVID JWKS discovery")
 	auditPath := fs.String("audit-log", "", "hash-linked JSONL audit path (required)")
 	replayPath := fs.String("replay-log", "", "durable consumed-jti JSONL (required; survives restart)")
+	denyPath := fs.String("denylist", "", "agent/workload/principal denylist JSON (required; empty lists are valid)")
 	ttl := fs.Duration("ttl", 120*time.Second, "minted token TTL")
 	tlsCert := fs.String("tls-cert", "", "PEM certificate for HTTPS (requires -tls-key)")
 	tlsKey := fs.String("tls-key", "", "PEM private key for HTTPS (requires -tls-cert)")
@@ -39,8 +41,8 @@ func cmdServe(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *regPath == "" || *keyPath == "" || *wlPath == "" || *idpPath == "" || *auditPath == "" || *replayPath == "" {
-		return fmt.Errorf("serve requires -registry, -signing-key, -workload-keys, -idp-jwks, -audit-log, and -replay-log")
+	if *regPath == "" || *keyPath == "" || *wlPath == "" || *idpPath == "" || *auditPath == "" || *replayPath == "" || *denyPath == "" {
+		return fmt.Errorf("serve requires -registry, -signing-key, -workload-keys, -idp-jwks, -audit-log, -replay-log, and -denylist")
 	}
 	nSpiffe := 0
 	if *spiffePath != "" {
@@ -73,6 +75,7 @@ func cmdServe(args []string) error {
 		{"-spiffe-jwks", *spiffePath},
 		{"-audit-log", *auditPath},
 		{"-replay-log", *replayPath},
+		{"-denylist", *denyPath},
 		{"-tls-cert", *tlsCert},
 		{"-tls-key", *tlsKey},
 	}); err != nil {
@@ -130,6 +133,10 @@ func cmdServe(args []string) error {
 		return err
 	}
 	defer replay.Close()
+	dl, err := denylist.LoadFile(*denyPath)
+	if err != nil {
+		return err
+	}
 	cfg := &sts.Config{
 		Issuer:      *issuer,
 		TTL:         *ttl,
@@ -144,12 +151,14 @@ func cmdServe(args []string) error {
 		RateLimit:   *rate,
 		TLSCertFile: *tlsCert,
 		TLSKeyFile:  *tlsKey,
+		Denylist:    dl,
 	}
 	srv, err := sts.NewServer(cfg)
 	if err != nil {
 		return err
 	}
 	reloader := sts.NewReloader(cfg, *regPath, *keyPath)
+	reloader.DenylistPath = *denyPath
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	reloadCh := make(chan os.Signal, 1)

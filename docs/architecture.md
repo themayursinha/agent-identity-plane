@@ -24,8 +24,9 @@ visor-gateway --verified --client-id / --session-id--> mcp-visor --policy--> MCP
 | `internal/verify` | Audience-bound verification → `ActorChain` |
 | `internal/a2a` | Client `RoundTripper` and server middleware |
 | `internal/audit` | Hash-linked JSONL + `trace` reconstruction |
-| `internal/gateway` | visor-gateway identity PEP (verify, audit, reverse-proxy) |
+| `internal/gateway` | visor-gateway identity PEP (verify, denylist, audit, reverse-proxy) |
 | `internal/visoradapter` | Map a verified chain to mcp-visor identity fields |
+| `internal/denylist` | Exact-ID agent/workload/principal revocation list |
 
 ## Token exchange
 
@@ -100,3 +101,13 @@ significant), and `jwks_uri` is fetched under the same URL policy.
 Keys are re-fetched on each `Attest`. `/readyz` fails if that live
 source cannot load keys. This is still JWKS verification, not a
 SPIRE Workload API client.
+
+## Agent denylist (v0.5)
+
+`serve -denylist` and `visor-gateway -denylist` load an owned JSON
+document of agent, workload, and principal IDs. Matching is exact
+(trailing slash is significant; last-segment short names are not
+IDs). The STS denies minting; visor-gateway denies a verified chain
+that contains a listed hop so already-minted tokens stop at the PEP.
+SIGHUP publishes denylist with registry and keys. Empty lists are
+valid. This is not DPoP and not a Production identity plane.

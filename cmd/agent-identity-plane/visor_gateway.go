@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/denylist"
 	"github.com/themayursinha/agent-identity-plane/internal/gateway"
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
@@ -26,14 +27,15 @@ func cmdVisorGateway(args []string) error {
 	identityOnly := fs.Bool("identity-only", false, "verify and return mapping JSON without proxying")
 	shortName := fs.Bool("client-short-name", false, "opt-in last URI segment as visor client-id (can collide across prefixes)")
 	auditPath := fs.String("audit-log", "", "hash-linked JSONL audit path (required)")
+	denyPath := fs.String("denylist", "", "agent/principal denylist JSON (required; empty lists are valid)")
 	tlsCert := fs.String("tls-cert", "", "PEM certificate for HTTPS (requires -tls-key)")
 	tlsKey := fs.String("tls-key", "", "PEM private key for HTTPS (requires -tls-cert)")
 	rate := fs.Float64("rate-limit", 30, "max identity-PEP requests per second (0 disables)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *auditPath == "" {
-		return fmt.Errorf("visor-gateway requires -audit-log")
+	if *auditPath == "" || *denyPath == "" {
+		return fmt.Errorf("visor-gateway requires -audit-log and -denylist")
 	}
 	if *backend != "" && *identityOnly {
 		return fmt.Errorf("visor-gateway: use -backend or -identity-only, not both")
@@ -47,6 +49,7 @@ func cmdVisorGateway(args []string) error {
 	}
 	if err := rejectAliasedPaths([]namedPath{
 		{"-audit-log", *auditPath},
+		{"-denylist", *denyPath},
 		{"-jwks", *jwksPath},
 		{"-tls-cert", *tlsCert},
 		{"-tls-key", *tlsKey},
@@ -58,6 +61,10 @@ func cmdVisorGateway(args []string) error {
 		return err
 	}
 	defer log.Close()
+	dlFn, err := denylist.Live(*denyPath)
+	if err != nil {
+		return err
+	}
 	cfg := &gateway.Config{
 		Bind:         *listen,
 		Audience:     *audience,
@@ -68,6 +75,7 @@ func cmdVisorGateway(args []string) error {
 		RateLimit:    *rate,
 		TLSCertFile:  *tlsCert,
 		TLSKeyFile:   *tlsKey,
+		DenylistFn:   dlFn,
 	}
 	if *backend != "" {
 		u, err := url.Parse(*backend)

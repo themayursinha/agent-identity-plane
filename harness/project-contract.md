@@ -39,10 +39,12 @@ Subcommands: `serve`, `visor-gateway`, `registry lint`, `token inspect`,
 `serve` loads a 0600 signing key or keyring (`active_kid` + `keys`),
 rejects group/world-readable key files, optional `-tls-cert`/`-tls-key`,
 `-rate-limit` (default 30/s), and a required `-replay-log` that must
-not alias `-audit-log` or other exclusive identity files. Optional
-JWT-SVID material is one of `-spiffe-jwks`, `-spiffe-jwks-url`, or
+not alias `-audit-log` or other exclusive identity files. Required
+`-denylist` is owned JSON (exact agent/workload/principal IDs; empty
+lists are valid) and is published with registry and keys on SIGHUP.
+Optional JWT-SVID material is one of `-spiffe-jwks`, `-spiffe-jwks-url`, or
 `-spiffe-oidc-issuer` (`https`, or loopback `http`). SIGHUP
-reloads registry and signing material as one identity snapshot; an
+reloads registry, signing material, and denylist as one identity snapshot; an
 invalid file keeps the previous snapshot.
 
 `visor-gateway` is the identity PEP in front of mcp-visor. It verifies
@@ -51,7 +53,8 @@ session), overwrites `X-Visor-Client-Id` / `X-Visor-Session-Id` after
 hop-by-hop stripping (client-id is the full `act.sub` unless
 `-client-short-name` is set), and does not forward the STS Bearer.
 It reverse-proxies to `-backend` (or returns the mapping with
-`-identity-only`). Audit writes fail closed. JWKS URLs must be
+`-identity-only`). Audit writes fail closed. `-denylist` is required
+and re-read on each verify. JWKS URLs must be
 `https` except loopback `http`. visor itself is unchanged.
 
 A deny is an authorization result (HTTP 400 with `error` / `error_description`

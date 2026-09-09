@@ -5,15 +5,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/themayursinha/agent-identity-plane/internal/denylist"
 	"github.com/themayursinha/agent-identity-plane/internal/registry"
 	"github.com/themayursinha/agent-identity-plane/internal/token"
 )
 
-// Reloader atomically replaces registry and signing material from disk.
-// A failed load leaves the previous snapshot in place (AI14).
+// Reloader atomically replaces registry, signing material, and denylist
+// from disk. A failed load leaves the previous snapshot in place (AI14).
 type Reloader struct {
 	RegistryPath string
 	SigningPath  string
+	DenylistPath string
 	cfg          *Config
 }
 
@@ -27,6 +29,7 @@ func (r *Reloader) Reload() error {
 	}
 	var reg *registry.Registry
 	var kr *token.Keyring
+	var dl *denylist.List
 	var err error
 	if r.RegistryPath != "" {
 		reg, err = registry.LoadFile(r.RegistryPath)
@@ -42,8 +45,15 @@ func (r *Reloader) Reload() error {
 			return err
 		}
 	}
-	if reg != nil || kr != nil {
-		if err := r.cfg.installIdentity(reg, kr); err != nil {
+	if r.DenylistPath != "" {
+		dl, err = denylist.LoadFile(r.DenylistPath)
+		if err != nil {
+			r.cfg.Metrics.ReloadFails.Add(1)
+			return err
+		}
+	}
+	if reg != nil || kr != nil || dl != nil {
+		if err := r.cfg.installIdentity(reg, kr, dl); err != nil {
 			r.cfg.Metrics.ReloadFails.Add(1)
 			return err
 		}

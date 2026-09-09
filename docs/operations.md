@@ -1,4 +1,4 @@
-# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS)
+# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist)
 
 This is an operable single-node STS, not a production identity plane.
 Loopback binds and fail-closed minting still apply.
@@ -53,7 +53,8 @@ Keyring (rotate without dropping in-flight tokens):
 Replace registry and/or signing files atomically (`mv` into place), then
 `SIGHUP`. Both documents are decoded first; then registry and keyring
 are published together. If either document fails strict decode, neither
-changes and the process does not exit.
+changes and the process does not exit. `-denylist` is included in that
+same snapshot.
 
 ## Replay
 
@@ -65,8 +66,8 @@ alias `-audit-log`, the signing key, or any other serve identity file
 (same path, symlink—including dangling links to the same target—or
 hard link). Replay records require `jti` and `until`; foreign or
 incomplete JSONL fails closed at open. Retry a hop from a first-hop
-IdP token, not by replaying an STS subject token. This is not an agent
-denylist.
+IdP token, not by replaying an STS subject token. Replay is not an
+agent denylist; see below.
 
 ## Endpoints
 
@@ -91,14 +92,30 @@ agent-identity-plane visor-gateway \
   -issuer https://sts.example.test \
   -jwks-url http://127.0.0.1:8080/jwks.json \
   -identity-only \
-  -audit-log ./gateway-audit.jsonl
+  -audit-log ./gateway-audit.jsonl \
+  -denylist testdata/denylist.json
 ```
 
 `GET /healthz`, `GET /readyz` (JWKS fetchable), `GET /metrics`.
 `-backend URL` reverse-proxies after verify and overwrites `X-Visor-*`.
-Rate limit default 30/s. `-audit-log` is required and must not alias
-`-jwks`. Use `-identity-only` to obtain `--client-id` / `--session-id`
+Rate limit default 30/s. `-audit-log` and `-denylist` are required and
+must not alias `-jwks`. Use `-identity-only` to obtain `--client-id` / `--session-id`
 for a stdio visor process; visor stdio is not an HTTP backend.
+
+## Denylist
+
+`-denylist` is owned JSON. Empty lists mean nothing is revoked.
+
+```json
+{"version":1,"agents":[],"workloads":[],"principals":[]}
+```
+
+IDs match exactly. Last-segment short names are not identifiers.
+`serve` checks agent, attested workload, and verified principal at
+mint. visor-gateway re-reads the file on each request and denies if
+the principal, acting agent, or any other hop is listed, so in-flight
+tokens stop without waiting for TTL. Invalid documents fail closed
+(serve keeps the previous snapshot on SIGHUP). This is not DPoP.
 
 ## Live JWT-SVID JWKS
 
