@@ -1,4 +1,4 @@
-# Operations (v0.2)
+# Operations (v0.2 STS, v0.3 visor-gateway)
 
 This is an operable single-node STS, not a production identity plane.
 Loopback binds and fail-closed minting still apply.
@@ -77,3 +77,25 @@ denylist.
 | `GET /metrics` | Prometheus text counters |
 | `GET /jwks.json` | Public STS keys |
 | `POST /oauth/token` | RFC 8693 exchange (rate-limited) |
+
+## visor-gateway
+
+`agent-identity-plane visor-gateway` is the identity PEP. Bind loopback.
+Prefer `-tls-cert` / `-tls-key`. `-jwks-url` must be `https` except
+loopback `http` for a local STS.
+
+```bash
+agent-identity-plane visor-gateway \
+  -listen 127.0.0.1:8090 \
+  -audience https://mcp-gateway.example.test \
+  -issuer https://sts.example.test \
+  -jwks-url http://127.0.0.1:8080/jwks.json \
+  -identity-only \
+  -audit-log ./gateway-audit.jsonl
+```
+
+`GET /healthz`, `GET /readyz` (JWKS fetchable), `GET /metrics`.
+`-backend URL` reverse-proxies after verify and overwrites `X-Visor-*`.
+Rate limit default 30/s. `-audit-log` is required and must not alias
+`-jwks`. Use `-identity-only` to obtain `--client-id` / `--session-id`
+for a stdio visor process; visor stdio is not an HTTP backend.

@@ -7,7 +7,7 @@ Agent Identity Plane is a self-hosted Agent Registry + Security Token Service (S
 > **This is not an action-policy engine.** It authenticates agents and preserves provenance.
 > [MCP Visor](https://github.com/themayursinha/mcp-visor) decides whether a concrete `tools/call` may proceed.
 
-The design follows Uber’s [Identity & Trust Foundation](https://www.uber.com/us/en/blog/solving-the-agent-identity-crisis/) layer and composes RFC 8693, WIMSE identifiers, and the AIMS (`draft-klrc-aiagent-auth`) profile. It does not require a live SPIRE deployment: workload credentials are verified from a JWKS bundle (SPIRE OIDC discovery or a local key set).
+The design composes RFC 8693, WIMSE identifiers, and the AIMS (`draft-klrc-aiagent-auth`) profile. It does not require a live SPIRE deployment: workload credentials are verified from a JWKS bundle (SPIRE OIDC discovery or a local key set).
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -51,7 +51,7 @@ Pre-built binaries and checksums are on the [Releases](https://github.com/themay
 ## Quick start
 
 ```bash
-# Generate a demo key pair and run the Uber-style multi-hop scenario plus attack cases
+# Generate a demo key pair and run the multi-hop scenario plus attack cases
 agent-identity-plane demo
 
 # Lint a registry file
@@ -67,6 +67,15 @@ agent-identity-plane serve \
   -idp-jwks testdata/idp-jwks.json \
   -audit-log ./sts-audit.jsonl \
   -replay-log ./sts-replay.jsonl
+
+# Identity PEP: verified --client-id / --session-id (stdio visor is started separately)
+agent-identity-plane visor-gateway \
+  -listen 127.0.0.1:8090 \
+  -audience https://mcp-gateway.example.test \
+  -issuer https://sts.example.test \
+  -jwks-url http://127.0.0.1:8080/jwks.json \
+  -identity-only \
+  -audit-log ./gateway-audit.jsonl
 ```
 
 ## What it enforces
@@ -83,6 +92,12 @@ agent-identity-plane serve \
 | AI8 | Every mint or deny is an audit record with a stable reason code |
 | AI9 | Audit receipts are deterministic (sorted keys, hash-linked JSONL) |
 | AI10 | Malformed registry, token, or JSON fails closed |
+| AI11 | Listen addresses must be explicit unicast hosts |
+| AI12 | STS-issued subject `jti` is single-use at exchange |
+| AI13 | Signing JWKS may overlap kids; preload then activate |
+| AI14 | Invalid identity reloads keep the previous snapshot |
+| AI15 | Signing-key files must not be group- or world-readable |
+| AI16 | visor-gateway forwards only a verified actor chain |
 
 ## Architecture
 
@@ -98,9 +113,9 @@ user --session--> oncall-agent --RFC 8693 exchange--> STS
                    visor-gateway --verified --client-id--> mcp-visor --policy--> MCP server
 ```
 
-Core packages: `internal/token`, `internal/registry`, `internal/attest`, `internal/sts`, `internal/verify`, `internal/a2a`, `internal/audit`, `internal/visoradapter`.
+Core packages: `internal/token`, `internal/registry`, `internal/attest`, `internal/sts`, `internal/verify`, `internal/a2a`, `internal/audit`, `internal/visoradapter`, `internal/gateway`.
 
-CLI: `serve`, `registry lint`, `token inspect|verify`, `trace`, `keys generate`, `demo`.
+CLI: `serve`, `visor-gateway`, `registry lint`, `token inspect|verify`, `trace`, `keys generate`, `demo`.
 
 ## Security model
 
@@ -111,6 +126,7 @@ CLI: `serve`, `registry lint`, `token inspect|verify`, `trace`, `keys generate`,
 - **Loopback by default:** `-listen` rejects `0.0.0.0` and `[::]`
 - **Honest SPIFFE claim:** JWT-SVID verification is JWKS-based and fixture-tested; this is not a live SPIRE / Workload API deployment
 - **v0.2 operability:** overlapping STS kids, durable `jti` replay at exchange, atomic SIGHUP identity snapshot, optional TLS, `/readyz` + `/metrics`. Not a production identity plane.
+- **v0.3 visor-gateway:** first-class identity PEP. JWKS file or `https` URL (loopback `http` allowed). Verified `--client-id` / `--session-id`; optional HTTP reverse-proxy that overwrites `X-Visor-*`. mcp-visor is unchanged.
 - **Not a host sandbox and not an MCP policy proxy**
 
 ## Documentation

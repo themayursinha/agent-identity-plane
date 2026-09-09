@@ -11,7 +11,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
 
-var version = "v0.2.0"
+var version = "v0.3.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -22,6 +22,8 @@ func main() {
 	switch os.Args[1] {
 	case "serve":
 		err = cmdServe(os.Args[2:])
+	case "visor-gateway":
+		err = cmdVisorGateway(os.Args[2:])
 	case "registry":
 		if len(os.Args) < 3 || os.Args[2] != "lint" {
 			err = fmt.Errorf("usage: agent-identity-plane registry lint <file>")
@@ -69,13 +71,14 @@ func usage() {
 
 Commands:
   serve                 Run the STS (loopback default; SIGHUP reloads registry and keys)
+  visor-gateway         Identity PEP in front of mcp-visor (verified --client-id)
 
   registry lint FILE    Strict-decode and validate a registry JSON file
   token inspect TOKEN   Decode a JWT without verifying the signature
   token verify ...      Verify a JWT against a JWKS and audience
   trace                 Reconstruct a txn from STS and visor JSONL logs
   keys generate         Write a new Ed25519 key file
-  demo                  Run the Uber-style scenario and attack cases
+  demo                  Run the multi-hop scenario and attack cases
   version               Print the version
 
 `, version)

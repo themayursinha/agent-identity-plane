@@ -1,6 +1,7 @@
 package visoradapter
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
@@ -21,7 +22,8 @@ type Mapping struct {
 // Options controls how agent URIs become visor identity names.
 type Options struct {
 	// ShortName, when true, uses the last path segment of the acting agent
-	// URI as ClientID so it can match a compact identities[] name.
+	// URI as ClientID. This is opt-in: last segments are not unique across
+	// URI prefixes, so the default mapping is the complete act.sub.
 	ShortName bool
 }
 
@@ -45,6 +47,21 @@ func FromChain(c verify.ActorChain, opt Options) Mapping {
 		Scope:       c.Scope,
 		Lineage:     lin,
 	}
+}
+
+// Complete reports whether the mapping has the visor identity fields a PEP
+// may forward: acting agent, client id, session/txn, and principal.
+func (m Mapping) Complete() error {
+	if strings.TrimSpace(m.ActingAgent) == "" || strings.TrimSpace(m.ClientID) == "" {
+		return fmt.Errorf("visoradapter: missing acting agent")
+	}
+	if strings.TrimSpace(m.SessionID) == "" {
+		return fmt.Errorf("visoradapter: missing session id")
+	}
+	if strings.TrimSpace(m.Principal) == "" {
+		return fmt.Errorf("visoradapter: missing principal")
+	}
+	return nil
 }
 
 func shortName(id string) string {

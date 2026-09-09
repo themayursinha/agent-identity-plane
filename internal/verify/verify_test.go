@@ -20,7 +20,7 @@ func TestHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, gw, err := w.UberHappyPath()
+	_, gw, err := w.HappyPath()
 	if err != nil {
 		t.Fatal(err)
 	}

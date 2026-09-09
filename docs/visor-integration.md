@@ -8,12 +8,20 @@ authenticated. Stdio attestation pins the MCP *server*, not the agent.
 Agent Identity Plane fills that gap **without modifying mcp-visor**:
 
 1. Agents obtain a next-hop token from this STS (`aud` = the visor-gateway).
-2. `examples/visor-gateway` verifies the Bearer token.
+2. `agent-identity-plane visor-gateway` verifies the Bearer token (JWKS
+   file or `https` URL, re-fetched on each request).
 3. `internal/visoradapter` maps the verified chain:
-   - `--client-id` ← acting agent (`act.sub`), optionally the last URI segment
+   - `--client-id` ← acting agent (`act.sub`). `-client-short-name` is
+     opt-in and uses the last URI segment; that can collide across prefixes.
    - `--session-id` ← `txn`
-4. The gateway can spawn `mcp-visor serve -client-id … -session-id …` or run
-   `-identity-only` and emit `X-Visor-Client-Id` / `X-Visor-Session-Id`.
+4. `-identity-only` returns that mapping as JSON and headers. Start
+   `mcp-visor serve -client-id … -session-id …` with those values for
+   the session. visor stdio is not an HTTP server.
+5. `-backend` reverse-proxies to an HTTP service (for example a
+   streamable-HTTP MCP front) and overwrites `X-Visor-Client-Id` /
+   `X-Visor-Session-Id` so a caller cannot spoof them.
+
+Do not spawn a visor process per HTTP request.
 
 Division of labour:
 
@@ -36,8 +44,9 @@ token gate:
   adapter already emits (`principal`, `acting_agent`, `txn`)
 - Audit `lineage` object on allow/deny, without changing the hash-chain core
 
-Until that lands, the visor-gateway is the enforcement point that makes visor
-identity policy meaningful.
+Until that lands, visor-gateway is the enforcement point that makes visor
+identity policy meaningful: only a verified chain produces the
+`--client-id` / `--session-id` you pass to visor.
 
 ## Mapping example
 
@@ -48,11 +57,12 @@ user1 > spiffe://example.test/agent/oncall > spiffe://example.test/agent/investi
 txn = txn-abc
 ```
 
-Visor flags (`-client-short-name`):
+Visor flags (default: full `act.sub`):
 
 ```text
-mcp-visor serve -client-id investigation -session-id txn-abc ...
+mcp-visor serve -client-id spiffe://example.test/agent/investigation -session-id txn-abc ...
 ```
 
-A visor policy `identities[]` entry named `investigation` then applies to a
-*verified* actor, not a spoofable CLI string.
+`-client-short-name` is opt-in (`-client-id investigation`). Last-segment
+names are not unique across URI prefixes, so visor `identities[]` must
+be written for the identifier the gateway actually emits.

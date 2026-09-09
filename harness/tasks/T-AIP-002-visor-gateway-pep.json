@@ -1,0 +1,21 @@
+{
+  "task_id": "T-AIP-002-visor-gateway-pep",
+  "invariant_ids": ["AI8", "AI11", "AI16"],
+  "security_sensitive": true,
+  "security_problem": "mcp-visor --client-id is an operator-supplied string. Without an identity PEP, a caller can spoof visor identity policy. JWKS fetched over cleartext non-loopback HTTP can be substituted.",
+  "required_behavior": "visor-gateway verifies the STS Bearer token against the configured audience before any backend forward. The verified chain must include a current actor, principal, and session. X-Visor-Client-Id defaults to the complete acting-agent URI (act.sub); last-segment short names are opt-in. X-Visor-Session-Id is txn. Both overwrite caller-supplied values after hop-by-hop header removal. JWKS URLs must be https except loopback http. Every allow or deny is audited before the HTTP response; an unwritable audit sink fails closed. Unspecified binds are rejected.",
+  "failure_behavior": "Fail closed: missing bearer, invalid token, incomplete actor chain, JWKS fetch failure, non-https JWKS URL, audit write failure, and unspecified bind produce a deny or process error. No backend request is made without a verified chain and a durable audit record.",
+  "max_attempts": 3,
+  "required_commands": [
+    {
+      "name": "target_test",
+      "expect": "pass",
+      "argv": ["go", "test", "./internal/gateway/...", "./internal/verify/...", "-count", "1"]
+    },
+    {
+      "name": "harness",
+      "expect": "pass",
+      "argv": ["harness/check.sh"]
+    }
+  ]
+}

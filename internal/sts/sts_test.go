@@ -34,7 +34,7 @@ func testWorld(t *testing.T) *scenario.World {
 
 func TestHappyPathActorChain(t *testing.T) {
 	w := testWorld(t)
-	oncall, gw, err := w.UberHappyPath()
+	oncall, gw, err := w.HappyPath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestAudienceNotAllowed(t *testing.T) {
 
 func TestReplayWrongAudience(t *testing.T) {
 	w := testWorld(t)
-	_, gw, err := w.UberHappyPath()
+	_, gw, err := w.HappyPath()
 	if err != nil {
 		t.Fatal(err)
 	}

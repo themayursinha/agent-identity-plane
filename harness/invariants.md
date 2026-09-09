@@ -104,3 +104,20 @@ old signing ring, or the reverse.
 On-disk STS signing material must be a regular file that is not
 group- or world-readable. Open modes fail closed at load and reload.
 
+## AI16 — visor-gateway is the identity PEP
+
+No request is forwarded to `-backend` without a verified STS actor
+chain for the configured audience. The current actor, session/`txn`,
+and principal must be present; an otherwise valid JWT with no `act`
+is denied (`incomplete_chain`). `X-Visor-Client-Id` defaults to the
+complete acting-agent URI (`act.sub`); last-segment short names are
+opt-in because they can collide across prefixes. `X-Visor-Session-Id`
+is `txn`. Both overwrite any caller-supplied values after hop-by-hop
+header stripping, so a `Connection` listing those names cannot drop
+them. The STS Bearer is consumed at the PEP and is not forwarded to
+`-backend`. Missing or invalid Bearer tokens are denied and audited
+(`identity_denied`) before the response. An unwritable audit sink
+fails closed (no backend forward, no completed identity decision).
+JWKS is re-read or fetched on each verify; JWKS URLs must be `https`
+except loopback `http`.
+
