@@ -143,6 +143,7 @@ principal, the acting agent, and every hop after the principal
 position (later hops are agents even if their URI equals `sub`).
 Agent and workload entries must be parseable URIs (scheme and host).
 Owned denylist JSON is strict-decoded. Empty lists are valid.
+Agent, workload, and principal IDs contain no Unicode whitespace.
 Unreadable denylist fails closed. The path must not alias other
 exclusive identity files. This is not DPoP and not a Production claim.
 

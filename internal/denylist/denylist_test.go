@@ -83,6 +83,7 @@ func TestLoadRejects(t *testing.T) {
 		`{"version":2,"agents":[]}`,
 		`{"version":1,"agents":["oncall"]}`,
 		`{"version":1,"agents":["spiffe ://example.test/agent/a"]}`,
+		"{\"version\":1,\"agents\":[\"spiffe://exa\u00a0mple/agent/a\"]}",
 		`{"version":1,"agents":["://example.test/a"]}`,
 		`{"version":1,"agents":[""]}`,
 		`{"version":1,"agents":["spiffe://a","spiffe://a"]}`,

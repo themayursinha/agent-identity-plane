@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/themayursinha/agent-identity-plane/internal/jsonutil"
 )
@@ -86,7 +87,7 @@ func New(f File) (*List, error) {
 
 func indexURI(dst map[string]struct{}, ids []string, kind string) error {
 	for _, id := range ids {
-		if strings.TrimSpace(id) == "" || id != strings.TrimSpace(id) {
+		if err := identityID(id); err != nil {
 			return fmt.Errorf("%w: %s", ErrEmptyID, kind)
 		}
 		if err := identityURI(id); err != nil {
@@ -100,10 +101,19 @@ func indexURI(dst map[string]struct{}, ids []string, kind string) error {
 	return nil
 }
 
-func identityURI(id string) error {
-	if strings.ContainsAny(id, " \t\r\n") {
-		return ErrInvalid
+func identityID(id string) error {
+	if id == "" {
+		return ErrEmptyID
 	}
+	for _, r := range id {
+		if unicode.IsSpace(r) {
+			return ErrEmptyID
+		}
+	}
+	return nil
+}
+
+func identityURI(id string) error {
 	u, err := url.Parse(id)
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return ErrInvalid
@@ -113,7 +123,7 @@ func identityURI(id string) error {
 
 func indexExact(dst map[string]struct{}, ids []string, kind string) error {
 	for _, id := range ids {
-		if strings.TrimSpace(id) == "" || id != strings.TrimSpace(id) {
+		if err := identityID(id); err != nil {
 			return fmt.Errorf("%w: %s", ErrEmptyID, kind)
 		}
 		if _, ok := dst[id]; ok {
