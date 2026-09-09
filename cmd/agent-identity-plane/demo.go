@@ -46,7 +46,7 @@ func cmdDemo(args []string) error {
 		}
 	}
 
-	oncallTok, gwTok, err := w.UberHappyPath()
+	oncallTok, gwTok, err := w.HappyPath()
 	if err != nil {
 		report(false, "scenario: allow FAIL "+err.Error())
 	} else {

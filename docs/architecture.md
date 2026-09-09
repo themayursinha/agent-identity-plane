@@ -1,6 +1,6 @@
 # Architecture
 
-Agent Identity Plane is the Identity & Trust Foundation layer of the Visor Trust
+Agent Identity Plane is the identity and provenance layer of the Visor Trust
 Plane. It authenticates AI agents, binds each agent to the workloads that may
 host it, and mints a new single-hop token at every agent-to-agent or
 agent-to-tool boundary so the originating principal is never dropped.
@@ -22,7 +22,7 @@ visor-gateway --verified --client-id / --session-id--> mcp-visor --policy--> MCP
 | `internal/attest` | `WorkloadAttestor`: local Ed25519 keys and SPIFFE JWT-SVID JWKS |
 | `internal/sts` | Token exchange, minting, loopback HTTP server |
 | `internal/verify` | Audience-bound verification → `ActorChain` |
-| `internal/a2a` | Client `RoundTripper` and server middleware (the paved path) |
+| `internal/a2a` | Client `RoundTripper` and server middleware |
 | `internal/audit` | Hash-linked JSONL + `trace` reconstruction |
 | `internal/gateway` | visor-gateway identity PEP (verify, audit, reverse-proxy) |
 | `internal/visoradapter` | Map a verified chain to mcp-visor identity fields |

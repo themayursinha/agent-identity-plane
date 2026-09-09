@@ -24,7 +24,7 @@ func TestMiddlewareAndTripper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, gwTok, err := w.UberHappyPath()
+	_, gwTok, err := w.HappyPath()
 	if err != nil {
 		t.Fatal(err)
 	}

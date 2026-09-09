@@ -7,7 +7,7 @@ Agent Identity Plane is a self-hosted Agent Registry + Security Token Service (S
 > **This is not an action-policy engine.** It authenticates agents and preserves provenance.
 > [MCP Visor](https://github.com/themayursinha/mcp-visor) decides whether a concrete `tools/call` may proceed.
 
-The design follows Uber’s [Identity & Trust Foundation](https://www.uber.com/us/en/blog/solving-the-agent-identity-crisis/) layer and composes RFC 8693, WIMSE identifiers, and the AIMS (`draft-klrc-aiagent-auth`) profile. It does not require a live SPIRE deployment: workload credentials are verified from a JWKS bundle (SPIRE OIDC discovery or a local key set).
+The design composes RFC 8693, WIMSE identifiers, and the AIMS (`draft-klrc-aiagent-auth`) profile. It does not require a live SPIRE deployment: workload credentials are verified from a JWKS bundle (SPIRE OIDC discovery or a local key set).
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -51,7 +51,7 @@ Pre-built binaries and checksums are on the [Releases](https://github.com/themay
 ## Quick start
 
 ```bash
-# Generate a demo key pair and run the Uber-style multi-hop scenario plus attack cases
+# Generate a demo key pair and run the multi-hop scenario plus attack cases
 agent-identity-plane demo
 
 # Lint a registry file

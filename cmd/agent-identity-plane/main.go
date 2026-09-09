@@ -78,7 +78,7 @@ Commands:
   token verify ...      Verify a JWT against a JWKS and audience
   trace                 Reconstruct a txn from STS and visor JSONL logs
   keys generate         Write a new Ed25519 key file
-  demo                  Run the Uber-style scenario and attack cases
+  demo                  Run the multi-hop scenario and attack cases
   version               Print the version
 
 `, version)

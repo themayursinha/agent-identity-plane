@@ -33,7 +33,7 @@ func testWorld(t *testing.T) *scenario.World {
 
 func TestIdentityOnlyGateway(t *testing.T) {
 	w := testWorld(t)
-	_, tok, err := w.UberHappyPath()
+	_, tok, err := w.HappyPath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestGatewayRejectsMissingBearer(t *testing.T) {
 
 func TestGatewayOverwritesSpoofedVisorHeaders(t *testing.T) {
 	w := testWorld(t)
-	_, tok, err := w.UberHappyPath()
+	_, tok, err := w.HappyPath()
 	if err != nil {
 		t.Fatal(err)
 	}

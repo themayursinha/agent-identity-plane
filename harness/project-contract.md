@@ -1,7 +1,7 @@
 # Agent Identity Plane — Project Contract
 
-A standalone, deterministic Go implementation of Uber's Identity & Trust
-Foundation layer for AI agents: an Agent Registry, a Security Token Service
+A standalone, deterministic Go implementation of an identity and provenance
+layer for AI agents: an Agent Registry, a Security Token Service
 that performs RFC 8693 token exchange with actor-chain provenance, a verifier
 and A2A client, and a visor-gateway identity PEP that derives mcp-visor's
 `--client-id` / `--session-id` from a verified actor chain.

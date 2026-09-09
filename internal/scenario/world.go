@@ -181,7 +181,7 @@ func (w *World) Exchange(agentID, workload, subject, audience, scope string) sts
 	})
 }
 
-func (w *World) UberHappyPath() (oncallTok, investTok string, err error) {
+func (w *World) HappyPath() (oncallTok, investTok string, err error) {
 	user, err := w.UserToken()
 	if err != nil {
 		return "", "", err
