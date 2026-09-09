@@ -162,6 +162,14 @@ func verifyEvent(e Event, prev string, wantIndex uint64) error {
 	if e.ChainIndex != wantIndex {
 		return fmt.Errorf("%w: chain_index %d want %d", ErrChainBroken, e.ChainIndex, wantIndex)
 	}
+	canon := e
+	if len(e.Hops) > 0 {
+		canon.Hops = append([]string(nil), e.Hops...)
+	}
+	canonicalizeEvent(&canon)
+	if !eventCanonEqual(e, canon) {
+		return fmt.Errorf("%w: non-canonical payload at index %d", ErrChainBroken, e.ChainIndex)
+	}
 	want, err := payloadHash(e)
 	if err != nil {
 		return err
@@ -170,6 +178,24 @@ func verifyEvent(e Event, prev string, wantIndex uint64) error {
 		return fmt.Errorf("%w: hash mismatch at index %d", ErrChainBroken, e.ChainIndex)
 	}
 	return nil
+}
+
+func eventCanonEqual(a, b Event) bool {
+	if a.Timestamp != b.Timestamp || a.EventType != b.EventType || a.ReasonCode != b.ReasonCode ||
+		a.Txn != b.Txn || a.JTI != b.JTI || a.AgentID != b.AgentID || a.Workload != b.Workload ||
+		a.Principal != b.Principal || a.Audience != b.Audience || a.Scope != b.Scope ||
+		a.Hash != b.Hash || a.PrevHash != b.PrevHash {
+		return false
+	}
+	if len(a.Hops) != len(b.Hops) {
+		return false
+	}
+	for i := range a.Hops {
+		if a.Hops[i] != b.Hops[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func payloadHash(e Event) (string, error) {

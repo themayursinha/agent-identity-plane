@@ -187,7 +187,8 @@ carry that `txn`/`jti`. `FormatTrace` prints only printable runes so
 unverified visor fields cannot inject extra hops. Hashed Event
 strings are valid UTF-8 and length-bounded (invalid or oversized
 request fields are replaced or truncated) so Append and reopen
-compute the same payload hash inside the 1MiB scanner cap. The hash
+compute the same payload hash inside the 1MiB scanner cap. A record
+that is not already in that canonical form is a chain break. The hash
 chain is not a MAC: tail truncation, an empty file, and a fully
 recomputed log are not detected. Planned signing-key rotation still waits
 `KeyRetirementWait`; compromise recovery removes the burned kid as

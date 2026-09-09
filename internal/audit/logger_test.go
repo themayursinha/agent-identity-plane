@@ -146,6 +146,47 @@ func TestAppendOversizedStringReopensAndTraces(t *testing.T) {
 	}
 }
 
+func TestRecoverRejectsSuffixBeyondCanonicalBound(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{
+		EventType:  "token_denied",
+		ReasonCode: "invalid_request",
+		Txn:        "txn-1",
+		JTI:        "jti-1",
+		AgentID:    strings.Repeat("a", maxEventString),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	needle := `"agent_id":"` + strings.Repeat("a", maxEventString) + `"`
+	tampered := strings.Replace(string(b), needle, `"agent_id":"`+strings.Repeat("a", maxEventString)+`INJECTED"`, 1)
+	if tampered == string(b) {
+		t.Fatal("replace")
+	}
+	if err := os.WriteFile(path, []byte(tampered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewLogger(path)
+	if err == nil || !errors.Is(err, ErrChainBroken) {
+		t.Fatalf("got %v want ErrChainBroken", err)
+	}
+	_, err = Trace(Query{Txn: "txn-1"}, []string{path}, nil)
+	if err == nil || !errors.Is(err, ErrChainBroken) {
+		t.Fatalf("trace %v want ErrChainBroken", err)
+	}
+}
+
 func TestRecoverRejectsBrokenHash(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.jsonl")
 	l, err := NewLogger(path)
