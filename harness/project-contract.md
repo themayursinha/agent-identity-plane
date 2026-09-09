@@ -3,8 +3,8 @@
 A standalone, deterministic Go implementation of Uber's Identity & Trust
 Foundation layer for AI agents: an Agent Registry, a Security Token Service
 that performs RFC 8693 token exchange with actor-chain provenance, a verifier
-and A2A client, and a visor-gateway adapter that turns a verified chain into
-mcp-visor's `--client-id` / `--session-id`.
+and A2A client, and a visor-gateway identity PEP that derives mcp-visor's
+`--client-id` / `--session-id` from a verified actor chain.
 
 ## Boundary
 
@@ -33,8 +33,8 @@ is written (AI8), and no token is issued.
 
 ## CLI contract
 
-Subcommands: `serve`, `registry lint`, `token inspect`, `token verify`,
-`trace`, `keys generate`, `demo`, `version`.
+Subcommands: `serve`, `visor-gateway`, `registry lint`, `token inspect`,
+`token verify`, `trace`, `keys generate`, `demo`, `version`.
 
 `serve` loads a 0600 signing key or keyring (`active_kid` + `keys`),
 rejects group/world-readable key files, optional `-tls-cert`/`-tls-key`,
@@ -42,6 +42,12 @@ rejects group/world-readable key files, optional `-tls-cert`/`-tls-key`,
 not alias `-audit-log` or other exclusive identity files. SIGHUP
 reloads registry and signing material as one identity snapshot; an
 invalid file keeps the previous snapshot.
+
+`visor-gateway` is the identity PEP in front of mcp-visor. It verifies
+the Bearer actor chain, overwrites `X-Visor-Client-Id` /
+`X-Visor-Session-Id`, and reverse-proxies to `-backend` (or returns
+the mapping with `-identity-only`). JWKS URLs must be `https` except
+loopback `http`. visor itself is unchanged.
 
 A deny is an authorization result (HTTP 400 with `error` / `error_description`
 and a reason code), not a process failure. Process failure is reserved for

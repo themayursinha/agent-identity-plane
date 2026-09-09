@@ -1,21 +1,15 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
+	"net/url"
 	"os"
-	"os/exec"
-	"strings"
-	"time"
 
-	"github.com/themayursinha/agent-identity-plane/internal/a2a"
+	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/gateway"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
-	"github.com/themayursinha/agent-identity-plane/internal/token"
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
-	"github.com/themayursinha/agent-identity-plane/internal/visoradapter"
 )
 
 func main() {
@@ -23,96 +17,57 @@ func main() {
 	audience := flag.String("audience", "https://mcp-gateway.example.test", "expected token audience")
 	issuer := flag.String("issuer", "https://sts.example.test", "STS issuer")
 	jwksPath := flag.String("jwks", "", "STS JWKS file (re-read on each verify)")
-	jwksURL := flag.String("jwks-url", "", "STS JWKS URL (fetched on each verify)")
-	shortName := flag.Bool("client-short-name", true, "derive visor --client-id from the last URI segment")
-	identityOnly := flag.Bool("identity-only", false, "verify and return mapping headers without spawning mcp-visor")
-	visorBin := flag.String("visor-bin", "", "path to mcp-visor binary")
-	visorServer := flag.String("visor-server", "", "mcp-visor -server command")
-	visorPolicy := flag.String("visor-policy", "", "mcp-visor -policy path")
-	visorAudit := flag.String("visor-audit", "", "mcp-visor -audit-log path")
+	jwksURL := flag.String("jwks-url", "", "STS JWKS URL (https, or loopback http)")
+	backend := flag.String("backend", "", "reverse-proxy base URL")
+	identityOnly := flag.Bool("identity-only", true, "return mapping JSON without proxying")
+	shortName := flag.Bool("client-short-name", true, "derive visor client-id from the last URI segment")
+	auditPath := flag.String("audit-log", "", "audit JSONL (required)")
 	flag.Parse()
 
 	if err := sts.ValidateBind(*listen); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	if *jwksPath == "" && *jwksURL == "" {
-		fmt.Fprintln(os.Stderr, "error: -jwks or -jwks-url is required")
+	if *auditPath == "" {
+		fmt.Fprintln(os.Stderr, "error: -audit-log is required")
 		os.Exit(1)
 	}
-	v := &verify.Verifier{Issuer: *issuer, KeysFn: liveJWKS(*jwksPath, *jwksURL)}
-	opt := visoradapter.Options{ShortName: *shortName}
-
-	mux := http.NewServeMux()
-	mux.Handle("GET /healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok\n"))
-	}))
-	mux.Handle("POST /session", a2a.Middleware(v, *audience)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		chain, ok := a2a.Chain(r.Context())
-		if !ok {
-			http.Error(w, "missing chain", http.StatusInternalServerError)
-			return
-		}
-		m := visoradapter.FromChain(chain, opt)
-		w.Header().Set("X-Visor-Client-Id", m.ClientID)
-		w.Header().Set("X-Visor-Session-Id", m.SessionID)
-		w.Header().Set("X-Actor-Chain", strings.Join(m.Hops, " > "))
-		if *identityOnly || *visorBin == "" {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(m)
-			return
-		}
-		if *visorServer == "" || *visorPolicy == "" || *visorAudit == "" {
-			http.Error(w, "visor spawn requires -visor-server -visor-policy -visor-audit", http.StatusInternalServerError)
-			return
-		}
-		cmd := exec.Command(*visorBin, "serve",
-			"-server", *visorServer,
-			"-policy", *visorPolicy,
-			"-audit-log", *visorAudit,
-			"-client-id", m.ClientID,
-			"-session-id", m.SessionID,
-		)
-		cmd.Stdout = io.Discard
-		cmd.Stderr = os.Stderr
-		if err := cmd.Start(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"mapping": m, "visor_pid": cmd.Process.Pid})
-	})))
-
-	srv := &http.Server{Addr: *listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	fmt.Fprintf(os.Stderr, "visor-gateway listening on %s audience=%s\n", *listen, *audience)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	fn, err := verify.LiveJWKS(*jwksPath, *jwksURL)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-func liveJWKS(path, url string) func() (token.JWKS, error) {
-	return func() (token.JWKS, error) {
-		if url != "" {
-			client := &http.Client{Timeout: 2 * time.Second}
-			resp, err := client.Get(url)
-			if err != nil {
-				return token.JWKS{}, err
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				return token.JWKS{}, fmt.Errorf("jwks url status %d", resp.StatusCode)
-			}
-			raw, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return token.JWKS{}, err
-			}
-			return token.ParseJWKS(raw)
-		}
-		raw, err := os.ReadFile(path)
+	log, err := audit.NewLogger(*auditPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	defer log.Close()
+	cfg := &gateway.Config{
+		Bind:         *listen,
+		Audience:     *audience,
+		Verifier:     &verify.Verifier{Issuer: *issuer, KeysFn: fn},
+		Audit:        log,
+		IdentityOnly: *identityOnly,
+		ShortName:    *shortName,
+	}
+	if *backend != "" {
+		u, err := url.Parse(*backend)
 		if err != nil {
-			return token.JWKS{}, err
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
 		}
-		return token.ParseJWKS(raw)
+		cfg.Backend = u
+		cfg.IdentityOnly = false
+	}
+	srv, err := gateway.NewServer(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stderr, "visor-gateway listening on %s audience=%s\n", *listen, *audience)
+	if err := srv.ListenAndServe(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
 	}
 }

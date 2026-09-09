@@ -104,3 +104,13 @@ old signing ring, or the reverse.
 On-disk STS signing material must be a regular file that is not
 group- or world-readable. Open modes fail closed at load and reload.
 
+## AI16 — visor-gateway is the identity PEP
+
+No request is forwarded to `-backend` without a verified STS actor
+chain for the configured audience. `X-Visor-Client-Id` and
+`X-Visor-Session-Id` are derived from that chain and overwrite any
+caller-supplied values. Missing or invalid Bearer tokens are denied
+and audited (`identity_denied`) before the response. JWKS is re-read
+or fetched on each verify; JWKS URLs must be `https` except loopback
+`http`.
+

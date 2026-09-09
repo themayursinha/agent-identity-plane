@@ -24,8 +24,8 @@ visor-gateway --verified --client-id / --session-id--> mcp-visor --policy--> MCP
 | `internal/verify` | Audience-bound verification → `ActorChain` |
 | `internal/a2a` | Client `RoundTripper` and server middleware (the paved path) |
 | `internal/audit` | Hash-linked JSONL + `trace` reconstruction |
+| `internal/gateway` | visor-gateway identity PEP (verify, audit, reverse-proxy) |
 | `internal/visoradapter` | Map a verified chain to mcp-visor identity fields |
-| `examples/visor-gateway` | HTTP front door that derives visor flags from a Bearer chain |
 
 ## Token exchange
 
@@ -49,9 +49,11 @@ flat `actchain`, narrowed `scope`, `jti`, `exp` (default 120s).
 ## Enforcement vs mcp-visor
 
 This process answers *who is acting*. mcp-visor answers *whether the tool call
-is allowed*. The visor-gateway verifies the chain and starts mcp-visor with
-`--client-id` and `--session-id` derived from it, so visor identity policy is
-no longer an unauthenticated string. See [visor-integration.md](visor-integration.md).
+is allowed*. `visor-gateway` verifies the actor chain and emits visor
+`--client-id` / `--session-id` (identity-only) or reverse-proxies to an
+HTTP backend with those headers overwritten. visor identity policy is
+then bound to a verified actor, not a spoofable CLI string. See
+[visor-integration.md](visor-integration.md).
 
 ## Bind addresses
 
@@ -75,3 +77,13 @@ host). Default is `127.0.0.1`.
   [operations.md](operations.md)).
 - `GET /readyz` and `GET /metrics`. `POST /oauth/token` is rate-limited
   (`-rate-limit`, default 30/s).
+
+## visor-gateway (v0.3)
+
+`visor-gateway` is the identity PEP in front of mcp-visor. Loopback bind,
+optional TLS, `/readyz` `/metrics`, rate limit, required audit log.
+JWKS from `-jwks` or `-jwks-url` (`https`, or loopback `http`) is
+loaded on each verify. `-identity-only` returns the visor mapping JSON
+so an operator can start stdio `mcp-visor serve`. `-backend` reverse-proxies
+an HTTP service after verification and overwrites `X-Visor-*`. visor
+stdio is not an HTTP backend. mcp-visor is not modified.

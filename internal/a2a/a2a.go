@@ -184,7 +184,7 @@ func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
 func Middleware(v *verify.Verifier, audience string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			raw := bearer(r.Header.Get("Authorization"))
+			raw := BearerToken(r.Header.Get("Authorization"))
 			if raw == "" {
 				http.Error(w, "missing bearer token", http.StatusUnauthorized)
 				return
@@ -201,7 +201,7 @@ func Middleware(v *verify.Verifier, audience string) func(http.Handler) http.Han
 	}
 }
 
-func bearer(h string) string {
+func BearerToken(h string) string {
 	const p = "Bearer "
 	if len(h) > len(p) && strings.EqualFold(h[:len(p)], p) {
 		return strings.TrimSpace(h[len(p):])
