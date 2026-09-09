@@ -33,7 +33,9 @@ to the requesting `agent_id` and MUST NOT carry `act` / `actchain`.
 
 Actor tokens (workload credentials) MUST have `aud` equal to the STS issuer
 and `sub` equal to the workload identifier (`spiffe://…` for the SPIFFE
-attestor).
+attestor). Live JWT-SVID JWKS may come from a file, an `https` URL
+(loopback `http`), or OIDC discovery; that is still JWKS verification,
+not a Workload API call.
 
 ## Actor chain reconstruction
 

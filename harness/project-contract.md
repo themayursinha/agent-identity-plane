@@ -39,7 +39,9 @@ Subcommands: `serve`, `visor-gateway`, `registry lint`, `token inspect`,
 `serve` loads a 0600 signing key or keyring (`active_kid` + `keys`),
 rejects group/world-readable key files, optional `-tls-cert`/`-tls-key`,
 `-rate-limit` (default 30/s), and a required `-replay-log` that must
-not alias `-audit-log` or other exclusive identity files. SIGHUP
+not alias `-audit-log` or other exclusive identity files. Optional
+JWT-SVID material is one of `-spiffe-jwks`, `-spiffe-jwks-url`, or
+`-spiffe-oidc-issuer` (`https`, or loopback `http`). SIGHUP
 reloads registry and signing material as one identity snapshot; an
 invalid file keeps the previous snapshot.
 

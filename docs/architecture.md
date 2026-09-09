@@ -19,7 +19,7 @@ visor-gateway --verified --client-id / --session-id--> mcp-visor --policy--> MCP
 |---|---|
 | `internal/token` | Compact JWS (EdDSA sign; EdDSA/ES256/RS256 verify), JWKS, claims |
 | `internal/registry` | Strict JSON agent registry |
-| `internal/attest` | `WorkloadAttestor`: local Ed25519 keys and SPIFFE JWT-SVID JWKS |
+| `internal/attest` | `WorkloadAttestor`: local Ed25519 keys and SPIFFE JWT-SVID JWKS (file, URL, or OIDC) |
 | `internal/sts` | Token exchange, minting, loopback HTTP server |
 | `internal/verify` | Audience-bound verification → `ActorChain` |
 | `internal/a2a` | Client `RoundTripper` and server middleware |
@@ -87,3 +87,15 @@ loaded on each verify. `-identity-only` returns the visor mapping JSON
 so an operator can start stdio `mcp-visor serve`. `-backend` reverse-proxies
 an HTTP service after verification and overwrites `X-Visor-*`. visor
 stdio is not an HTTP backend. mcp-visor is not modified.
+
+## Live workload JWKS (v0.4)
+
+`serve` may verify JWT-SVIDs against a live JWKS in addition to local
+workload keys. Use one of `-spiffe-jwks`, `-spiffe-jwks-url`, or
+`-spiffe-oidc-issuer`. URLs must be `https` except loopback `http`
+(TLS 1.2+, 1MiB cap, same check on redirects). OIDC discovery is
+`{issuer}/.well-known/openid-configuration`; the document `issuer`
+must match, and `jwks_uri` is fetched under the same URL policy.
+Keys are re-fetched on each `Attest`. `/readyz` fails if that live
+source cannot load keys. This is still JWKS verification, not a
+SPIRE Workload API client.

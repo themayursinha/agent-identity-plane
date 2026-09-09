@@ -95,25 +95,33 @@ func loopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// FetchJWKS GETs a JWKS document. TLS 1.2+; body capped at 1MiB.
-func FetchJWKS(rawURL string) (token.JWKS, error) {
+func getCapped(rawURL string) ([]byte, error) {
 	if err := CheckJWKSURL(rawURL); err != nil {
-		return token.JWKS{}, err
+		return nil, err
 	}
 	resp, err := jwksClient.Get(rawURL)
 	if err != nil {
-		return token.JWKS{}, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return token.JWKS{}, fmt.Errorf("verify: jwks url status %d", resp.StatusCode)
+		return nil, fmt.Errorf("verify: url status %d", resp.StatusCode)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxJWKSBytes+1))
 	if err != nil {
-		return token.JWKS{}, err
+		return nil, err
 	}
 	if len(raw) > maxJWKSBytes {
-		return token.JWKS{}, fmt.Errorf("verify: jwks document exceeds %d bytes", maxJWKSBytes)
+		return nil, fmt.Errorf("verify: document exceeds %d bytes", maxJWKSBytes)
+	}
+	return raw, nil
+}
+
+// FetchJWKS GETs a JWKS document. TLS 1.2+; body capped at 1MiB.
+func FetchJWKS(rawURL string) (token.JWKS, error) {
+	raw, err := getCapped(rawURL)
+	if err != nil {
+		return token.JWKS{}, err
 	}
 	ks, err := token.ParseJWKS(raw)
 	if err != nil {

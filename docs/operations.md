@@ -1,4 +1,4 @@
-# Operations (v0.2 STS, v0.3 visor-gateway)
+# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS)
 
 This is an operable single-node STS, not a production identity plane.
 Loopback binds and fail-closed minting still apply.
@@ -73,7 +73,7 @@ denylist.
 | Path | Role |
 |---|---|
 | `GET /healthz` | Process is up |
-| `GET /readyz` | Registry and signing ring are loaded |
+| `GET /readyz` | Registry, signing ring, and live workload JWKS (if configured) are loaded |
 | `GET /metrics` | Prometheus text counters |
 | `GET /jwks.json` | Public STS keys |
 | `POST /oauth/token` | RFC 8693 exchange (rate-limited) |
@@ -99,3 +99,23 @@ agent-identity-plane visor-gateway \
 Rate limit default 30/s. `-audit-log` is required and must not alias
 `-jwks`. Use `-identity-only` to obtain `--client-id` / `--session-id`
 for a stdio visor process; visor stdio is not an HTTP backend.
+
+## Live JWT-SVID JWKS
+
+`serve` still verifies local `-workload-keys`. Optionally add **one** of:
+
+```bash
+# Static bundle (v0.1+)
+-spiffe-jwks ./spiffe-jwks.json
+
+# Direct JWKS URL (https, or loopback http)
+-spiffe-jwks-url https://oidc.example.test/keys
+
+# OIDC discovery (issuer URL, same URL policy)
+-spiffe-oidc-issuer https://oidc.example.test
+```
+
+Discovery GETs `{issuer}/.well-known/openid-configuration`, requires
+the document `issuer` to match, then fetches `jwks_uri`. Serve fails
+to start if that source is unreachable or empty. `/readyz` fails later
+if it cannot load keys. This is not the SPIRE Workload API.

@@ -50,6 +50,12 @@ func (c *Config) Handler() http.Handler {
 			http.Error(w, "not ready\n", http.StatusServiceUnavailable)
 			return
 		}
+		if r, ok := snap.Attestor.(interface{ Ready() error }); ok {
+			if err := r.Ready(); err != nil {
+				http.Error(w, "not ready\n", http.StatusServiceUnavailable)
+				return
+			}
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
