@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/themayursinha/agent-identity-plane/internal/attest"
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
 	"github.com/themayursinha/agent-identity-plane/internal/denylist"
 	"github.com/themayursinha/agent-identity-plane/internal/registry"
@@ -278,5 +279,71 @@ func TestDenylistBlocksAgentWorkloadPrincipal(t *testing.T) {
 	res = w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
 	if res.ReasonCode != sts.ReasonPrincipalDenied || res.Token != "" {
 		t.Fatalf("principal: %s token=%q", res.ReasonCode, res.Token)
+	}
+}
+
+func TestSPIFFEIssuerKeyIsNotConfirmation(t *testing.T) {
+	w := testWorld(t)
+	issuer, err := token.GenerateEd25519("spire")
+	if err != nil {
+		t.Fatal(err)
+	}
+	issSigner, err := token.SignerFromKeyFile(issuer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svid, err := issSigner.SignClaims(token.Claims{
+		Iss: "https://spire.example.test",
+		Sub: scenario.WLOncall,
+		Aud: token.Audience{scenario.Issuer},
+		Exp: w.Now.Add(time.Minute).Unix(),
+		Iat: w.Now.Unix(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.STS.Attestor = &attest.SPIFFEJWT{
+		Bundle:   issSigner.JWKS(),
+		Audience: scenario.Issuer,
+		Now:      func() int64 { return w.Now.Unix() },
+	}
+	user, err := w.UserToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := sts.ExchangeRequest{
+		GrantType:    sts.GrantTokenExchange,
+		SubjectToken: user,
+		ActorToken:   svid,
+		Audience:     scenario.Invest,
+		AgentID:      scenario.Oncall,
+		Scope:        "mcp:github:pr",
+	}
+	res := w.STS.Exchange(context.Background(), req)
+	if res.ReasonCode != sts.ReasonMissingCNF || res.Token != "" {
+		t.Fatalf("got %s %s token=%q", res.ReasonCode, res.ErrorDesc, res.Token)
+	}
+	pop, err := token.GenerateEd25519("wl-pop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jkt, err := pop.PublicJWK().Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.ConfirmJKT = jkt
+	res = w.STS.Exchange(context.Background(), req)
+	if res.ReasonCode != sts.ReasonOK {
+		t.Fatalf("got %s %s", res.ReasonCode, res.ErrorDesc)
+	}
+	if res.Issued.ConfirmJKT() != jkt {
+		t.Fatalf("cnf %s want %s", res.Issued.ConfirmJKT(), jkt)
+	}
+	issuerJKT, err := issuer.PublicJWK().Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Issued.ConfirmJKT() == issuerJKT {
+		t.Fatal("cnf.jkt must not be the SPIFFE issuer key")
 	}
 }

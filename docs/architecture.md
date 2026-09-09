@@ -117,9 +117,12 @@ not denylisted.
 
 ## DPoP at visor-gateway (v0.6)
 
-Minted STS tokens include `cnf.jkt`, the RFC 7638 thumbprint of the
-JWK that verified the actor token for that hop. visor-gateway requires
-a `DPoP` proof JWT (`typ=dpop+jwt`) whose embedded public JWK
+Minted STS tokens include `cnf.jkt`, the RFC 7638 thumbprint of a
+**workload-possessed** key. For localkeys actor tokens that is the
+verifying JWK. A JWT-SVID is signed by the SPIFFE issuer, so that
+issuer JWK is not `cnf.jkt`; the caller binds a possessed key with a
+token-endpoint DPoP proof (`ath` omitted) on `POST /oauth/token`.
+visor-gateway requires a `DPoP` proof JWT (`typ=dpop+jwt`) whose embedded public JWK
 thumbprint equals `cnf.jkt`. The proof must match this request's
 method (`htm`), reconstructed URI (`htu`: TLS→https else http, `Host`,
 path; no query/fragment; `X-Forwarded-*` ignored), access-token hash

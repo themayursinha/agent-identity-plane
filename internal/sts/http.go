@@ -4,12 +4,15 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/dpop"
 )
 
 // ValidateBind rejects unspecified addresses (0.0.0.0, ::, empty host).
@@ -116,6 +119,22 @@ func (c *Config) handleToken(w http.ResponseWriter, r *http.Request) {
 		AgentID:            r.Form.Get("agent_id"),
 		Purp:               r.Form.Get("purp"),
 	}
+	if strings.TrimSpace(r.Header.Get("DPoP")) != "" {
+		proof, err := dpop.Verify(r, "", "", c.now())
+		if err != nil {
+			c.writeHTTPDeny(w, http.StatusBadRequest, "invalid_dpop_proof", err.Error(), ReasonInvalidDPoP)
+			return
+		}
+		if err := c.Replay.Consume(proof.JTI, proof.IAT); err != nil {
+			if errors.Is(err, ErrReplay) {
+				c.writeHTTPDeny(w, http.StatusBadRequest, "invalid_dpop_proof", "dpop proof jti already used", ReasonReplayedToken)
+				return
+			}
+			c.writeHTTPDeny(w, http.StatusInternalServerError, "server_error", err.Error(), ReasonInvalidRequest)
+			return
+		}
+		req.ConfirmJKT = proof.JKT
+	}
 	res := c.Exchange(r.Context(), req)
 	if res.ReasonCode != ReasonOK {
 		status := http.StatusBadRequest
@@ -132,7 +151,7 @@ func (c *Config) handleToken(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"access_token":      res.Token,
 		"issued_token_type": TokenTypeJWT,
-		"token_type":        "Bearer",
+		"token_type":        "DPoP",
 		"expires_in":        res.ExpiresIn,
 		"scope":             res.Issued.Scope,
 	})

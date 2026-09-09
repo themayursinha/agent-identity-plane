@@ -42,6 +42,8 @@ const (
 	ReasonAgentDenied            = denylist.ReasonAgentDenied
 	ReasonWorkloadDenied         = denylist.ReasonWorkloadDenied
 	ReasonPrincipalDenied        = denylist.ReasonPrincipalDenied
+	ReasonMissingCNF             = "missing_cnf"
+	ReasonInvalidDPoP            = "invalid_dpop_proof"
 )
 
 var ErrUnspecifiedBind = errors.New("sts: listen address must not be unspecified")
@@ -168,6 +170,7 @@ type ExchangeRequest struct {
 	RequestedTokenType string
 	AgentID            string
 	Purp               string
+	ConfirmJKT         string // RFC 7638 thumbprint of a workload-possessed DPoP key
 }
 
 // ExchangeResult is either a minted token or a deny.
@@ -319,8 +322,12 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 		}
 	}
 
-	if wl.JKT == "" {
-		return deny(ReasonInvalidActorToken, "invalid_request", "actor token confirmation key missing")
+	jkt := strings.TrimSpace(req.ConfirmJKT)
+	if jkt == "" {
+		jkt = wl.PossessedJKT
+	}
+	if jkt == "" {
+		return deny(ReasonMissingCNF, "invalid_request", "confirmation key must be possessed by the workload")
 	}
 
 	ttl := c.ttl()
@@ -337,7 +344,7 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 		ActChain: newChain,
 		Scope:    issuedScope,
 		Purp:     req.Purp,
-		Cnf:      &token.Confirmation{JKT: wl.JKT},
+		Cnf:      &token.Confirmation{JKT: jkt},
 	}
 	if claims.Purp == "" {
 		claims.Purp = sub.Purp

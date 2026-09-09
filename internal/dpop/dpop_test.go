@@ -173,6 +173,53 @@ func TestOutboundURIRejectsMissingScheme(t *testing.T) {
 	}
 }
 
+func TestOutboundURIPrefersRequestHost(t *testing.T) {
+	req, err := http.NewRequest(http.MethodPost, "https://127.0.0.1:8443/session", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "mcp.example.test"
+	got, err := OutboundURI(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "https://mcp.example.test/session" {
+		t.Fatalf("htu %s", got)
+	}
+}
+
+func TestTokenRequestProofOmitsATH(t *testing.T) {
+	kf, err := token.GenerateEd25519("wl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	req := httptest.NewRequest(http.MethodPost, "http://sts.example.test/oauth/token", nil)
+	req.Host = "sts.example.test"
+	htu, err := OutboundURI(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof, err := Prove(kf, http.MethodPost, htu, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("DPoP", proof)
+	req.TLS = nil
+	// inbound reconstruction for this http test request is http://host/path
+	res, err := Verify(req, "", "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jkt, err := kf.PublicJWK().Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.JKT != jkt {
+		t.Fatalf("jkt %s want %s", res.JKT, jkt)
+	}
+}
+
 func TestMissingHost(t *testing.T) {
 	req := &http.Request{Method: http.MethodPost, URL: &url.URL{Path: "/session"}}
 	_, err := RequestURI(req)

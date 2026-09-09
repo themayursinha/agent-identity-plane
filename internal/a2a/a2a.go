@@ -61,6 +61,8 @@ type Exchanger interface {
 type HTTPExchanger struct {
 	Endpoint string
 	Client   *http.Client
+	ProofKey func(ctx context.Context) (*token.KeyFile, error)
+	Now      func() time.Time
 }
 
 func (h HTTPExchanger) Exchange(ctx context.Context, req sts.ExchangeRequest) (sts.ExchangeResult, error) {
@@ -87,6 +89,25 @@ func (h HTTPExchanger) Exchange(ctx context.Context, req sts.ExchangeRequest) (s
 		return sts.ExchangeResult{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if h.ProofKey != nil {
+		kf, err := h.ProofKey(ctx)
+		if err != nil {
+			return sts.ExchangeResult{}, err
+		}
+		htu, err := dpop.OutboundURI(httpReq)
+		if err != nil {
+			return sts.ExchangeResult{}, err
+		}
+		now := time.Now().UTC()
+		if h.Now != nil {
+			now = h.Now()
+		}
+		proof, err := dpop.Prove(kf, http.MethodPost, htu, "", now)
+		if err != nil {
+			return sts.ExchangeResult{}, err
+		}
+		httpReq.Header.Set("DPoP", proof)
+	}
 	resp, err := cl.Do(httpReq)
 	if err != nil {
 		return sts.ExchangeResult{}, err

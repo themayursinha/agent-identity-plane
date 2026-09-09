@@ -130,7 +130,9 @@ to `-dpop-replay` (JSONL, mode 0600) before allow, through
 `iat + ClockSkew`. Reconstruct `htu` from this request (TLS, Host,
 path). Do not trust `X-Forwarded-Proto` or `X-Forwarded-Host`.
 Clients that mint a DPoP proof (the A2A tripper) set `htu` from the
-outbound URL scheme and host; `RoundTrip` still has `TLS == nil`.
+outbound URL scheme and `Host` (then `URL.Host`). `RoundTrip` still has
+`TLS == nil`. JWT-SVID hops must send DPoP on `POST /oauth/token` so
+`cnf.jkt` is a workload key, not the SPIFFE issuer key.
 There is no DPoP nonce. STS `POST /oauth/token` still uses
 `actor_token`, not DPoP.
 

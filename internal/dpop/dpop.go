@@ -34,7 +34,7 @@ type proofClaims struct {
 	HTM string `json:"htm"`
 	HTU string `json:"htu"`
 	IAT int64  `json:"iat"`
-	ATH string `json:"ath"`
+	ATH string `json:"ath,omitempty"`
 }
 
 // Result is a verified proof identity for durable jti consumption.
@@ -77,9 +77,9 @@ func OutboundURI(r *http.Request) (string, error) {
 	if scheme != "http" && scheme != "https" {
 		return "", ErrHTU
 	}
-	host := r.URL.Host
+	host := r.Host
 	if strings.TrimSpace(host) == "" {
-		host = r.Host
+		host = r.URL.Host
 	}
 	if strings.TrimSpace(host) == "" {
 		return "", ErrHTU
@@ -119,13 +119,16 @@ func Prove(kf *token.KeyFile, method, htu, accessToken string, now time.Time) (s
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	payload, err := json.Marshal(proofClaims{
+	pc := proofClaims{
 		JTI: newJTI(),
 		HTM: method,
 		HTU: htu,
 		IAT: now.Unix(),
-		ATH: AccessTokenHash(accessToken),
-	})
+	}
+	if accessToken != "" {
+		pc.ATH = AccessTokenHash(accessToken)
+	}
+	payload, err := json.Marshal(pc)
 	if err != nil {
 		return "", err
 	}
@@ -147,7 +150,8 @@ func Verify(r *http.Request, accessToken, wantJKT string, now time.Time) (Result
 	if raw == "" {
 		return Result{}, ErrMissingProof
 	}
-	if wantJKT == "" {
+	tokenRequest := accessToken == "" && wantJKT == ""
+	if !tokenRequest && (accessToken == "" || wantJKT == "") {
 		return Result{}, ErrInvalidProof
 	}
 	parts := strings.Split(raw, ".")
@@ -189,7 +193,14 @@ func Verify(r *http.Request, accessToken, wantJKT string, now time.Time) (Result
 	if err := json.Unmarshal(pb, &c); err != nil {
 		return Result{}, ErrInvalidProof
 	}
-	if c.JTI == "" || c.HTM == "" || c.HTU == "" || c.IAT == 0 || c.ATH == "" {
+	if c.JTI == "" || c.HTM == "" || c.HTU == "" || c.IAT == 0 {
+		return Result{}, ErrInvalidProof
+	}
+	if tokenRequest {
+		if c.ATH != "" {
+			return Result{}, ErrInvalidProof
+		}
+	} else if c.ATH == "" {
 		return Result{}, ErrInvalidProof
 	}
 	if c.HTM != r.Method {
@@ -202,14 +213,14 @@ func Verify(r *http.Request, accessToken, wantJKT string, now time.Time) (Result
 	if c.HTU != wantHTU {
 		return Result{}, ErrInvalidProof
 	}
-	if c.ATH != AccessTokenHash(accessToken) {
+	if !tokenRequest && c.ATH != AccessTokenHash(accessToken) {
 		return Result{}, ErrInvalidProof
 	}
 	jkt, err := jwk.Thumbprint()
 	if err != nil {
 		return Result{}, ErrInvalidProof
 	}
-	if jkt != wantJKT {
+	if !tokenRequest && jkt != wantJKT {
 		return Result{}, ErrInvalidProof
 	}
 	if now.IsZero() {
