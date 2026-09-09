@@ -300,3 +300,21 @@ func TestCommandThenStubVisor(t *testing.T) {
 		}
 	}
 }
+
+func TestChildEnvDropsAccessToken(t *testing.T) {
+	got := visorsession.ChildEnv([]string{
+		"PATH=/usr/bin",
+		visorsession.AccessTokenEnv + "=stolen",
+		"HOME=/tmp",
+		visorsession.AccessTokenEnv + "_OTHER=keep",
+	})
+	want := []string{"PATH=/usr/bin", "HOME=/tmp", visorsession.AccessTokenEnv + "_OTHER=keep"}
+	if len(got) != len(want) {
+		t.Fatalf("%q", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("%q vs %q", got, want)
+		}
+	}
+}

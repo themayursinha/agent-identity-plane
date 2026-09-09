@@ -21,7 +21,12 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/visoradapter"
 )
 
-const maxMappingBytes = 1 << 20
+const (
+	maxMappingBytes = 1 << 20
+	// AccessTokenEnv is the optional STS token source for visor-session.
+	// It is stripped from the visor child environment.
+	AccessTokenEnv = "AIP_ACCESS_TOKEN"
+)
 
 var (
 	// ErrGatewayURL is returned when the visor-gateway URL is not https
@@ -201,4 +206,18 @@ func FormatArgv(name string, args []string) string {
 		return name
 	}
 	return name + " " + strings.Join(args, " ")
+}
+
+// ChildEnv copies env without AIP_ACCESS_TOKEN so mcp-visor and its
+// descendants do not inherit the STS access token.
+func ChildEnv(env []string) []string {
+	prefix := AccessTokenEnv + "="
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }

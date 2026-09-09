@@ -66,7 +66,8 @@ only a complete mapping, and execs `mcp-visor serve` with
 cannot set those flags. Gateway URLs follow the JWKS policy (`https`,
 or loopback `http`; no query or fragment). Redirects are not followed. `-dpop-key` is a 0600 key
 file. Hand-starting visor with a typed `--client-id` is still
-spoofable. This is not a Production claim.
+spoofable. On Unix the process is replaced by visor; `AIP_ACCESS_TOKEN`
+is stripped from visor's environment. This is not a Production claim.
 
 `trace` reconstructs hops from required `-audit-log` JSONL. `-audit`
 is always chain-verified; only `-visor` may be generic JSONL. Opening

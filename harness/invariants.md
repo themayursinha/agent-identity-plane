@@ -212,6 +212,8 @@ visor arguments cannot set `-client-id`, `--client-id`, `-session-id`,
 or `--session-id` (including `=` forms). `-dpop-key` is a 0600 Ed25519
 key or keyring file. `-print` prints argv and does not exec. Starting
 `mcp-visor` by hand with a typed `--client-id` is still spoofable; this
-command is the supported authentic path. This is not a DPoP nonce
+command is the supported authentic path. On Unix, `visor-session`
+replaces itself with visor so SIGTERM hits visor, and the visor
+environment does not inherit `AIP_ACCESS_TOKEN`. This is not a DPoP nonce
 deployment and not a Production claim.
 

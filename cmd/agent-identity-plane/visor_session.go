@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"time"
 
 	"github.com/themayursinha/agent-identity-plane/internal/visorsession"
@@ -30,7 +29,7 @@ func cmdVisorSession(args []string) error {
 	}
 	token := *tok
 	if token == "" {
-		token = os.Getenv("AIP_ACCESS_TOKEN")
+		token = os.Getenv(visorsession.AccessTokenEnv)
 	}
 	kf, err := visorsession.LoadProofKey(*dpopKey)
 	if err != nil {
@@ -54,9 +53,5 @@ func cmdVisorSession(args []string) error {
 		fmt.Println(visorsession.FormatArgv(name, argv))
 		return nil
 	}
-	cmd := exec.Command(name, argv...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return execVisor(name, argv)
 }
