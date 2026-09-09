@@ -158,7 +158,8 @@ Production (no DPoP nonce).
 with a DPoP proof and starts `mcp-visor serve` using only the returned
 `-client-id` / `-session-id`. Extra visor arguments cannot set those
 flags. The gateway URL uses the same policy as JWKS (`https`, or
-loopback `http`; no query or fragment). `-dpop-key` is a 0600 Ed25519
+loopback `http`; no query or fragment). Redirects are not followed.
+`-dpop-key` is a 0600 Ed25519
 file. Starting visor by hand with a typed `--client-id` is still
 spoofable; this command is the supported authentic path. This is not a
 DPoP nonce deployment and not a Production identity plane.

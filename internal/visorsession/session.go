@@ -38,6 +38,9 @@ var (
 	ErrToken = errors.New("visorsession: access token required")
 	// ErrProofKey is returned when the DPoP key is missing.
 	ErrProofKey = errors.New("visorsession: dpop key required")
+	// ErrRedirect is returned when visor-gateway responds with a redirect.
+	// Redirects are not followed: DPoP htm/htu are bound to the configured URL.
+	ErrRedirect = errors.New("visorsession: HTTP redirects are not followed")
 )
 
 var httpClient = &http.Client{
@@ -49,14 +52,8 @@ var httpClient = &http.Client{
 		MaxIdleConns:        32,
 		MaxIdleConnsPerHost: 8,
 	},
-	CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 3 {
-			return fmt.Errorf("visorsession: too many redirects")
-		}
-		if req == nil || req.URL == nil {
-			return ErrGatewayURL
-		}
-		return CheckGatewayURL(req.URL.String())
+	CheckRedirect: func(*http.Request, []*http.Request) error {
+		return ErrRedirect
 	},
 }
 

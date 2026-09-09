@@ -64,7 +64,7 @@ to minted `cnf.jkt` and a durable `-dpop-replay` log. JWKS URLs must be
 only a complete mapping, and execs `mcp-visor serve` with
 `-client-id` / `-session-id` from that mapping. Extra visor arguments
 cannot set those flags. Gateway URLs follow the JWKS policy (`https`,
-or loopback `http`; no query or fragment). `-dpop-key` is a 0600 key
+or loopback `http`; no query or fragment). Redirects are not followed. `-dpop-key` is a 0600 key
 file. Hand-starting visor with a typed `--client-id` is still
 spoofable. This is not a Production claim.
 

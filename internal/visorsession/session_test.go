@@ -198,13 +198,13 @@ func TestFetchRejectsQueryAndFragment(t *testing.T) {
 	}
 }
 
-func TestFetchRejectsRedirectOffLoopback(t *testing.T) {
+func TestFetchRejectsRedirects(t *testing.T) {
 	kf, err := token.GenerateEd25519("wl")
 	if err != nil {
 		t.Fatal(err)
 	}
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "http://example.test/session", http.StatusFound)
+		http.Redirect(w, r, "http://127.0.0.1/session", http.StatusFound)
 	}))
 	t.Cleanup(ts.Close)
 	_, err = visorsession.Fetch(context.Background(), visorsession.Request{
@@ -212,7 +212,7 @@ func TestFetchRejectsRedirectOffLoopback(t *testing.T) {
 		Token:      "tok",
 		ProofKey:   kf,
 	})
-	if !errors.Is(err, visorsession.ErrGatewayURL) {
+	if !errors.Is(err, visorsession.ErrRedirect) {
 		t.Fatalf("got %v", err)
 	}
 }
