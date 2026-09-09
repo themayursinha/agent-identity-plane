@@ -11,7 +11,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
 
-var version = "v0.7.0"
+var version = "v0.8.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -24,6 +24,8 @@ func main() {
 		err = cmdServe(os.Args[2:])
 	case "visor-gateway":
 		err = cmdVisorGateway(os.Args[2:])
+	case "visor-session":
+		err = cmdVisorSession(os.Args[2:])
 	case "registry":
 		if len(os.Args) < 3 || os.Args[2] != "lint" {
 			err = fmt.Errorf("usage: agent-identity-plane registry lint <file>")
@@ -72,6 +74,7 @@ func usage() {
 Commands:
   serve                 Run the STS (loopback default; SIGHUP reloads registry and keys)
   visor-gateway         Identity PEP in front of mcp-visor (verified --client-id, DPoP)
+  visor-session         Start mcp-visor with client-id/session-id from visor-gateway
 
   registry lint FILE    Strict-decode and validate a registry JSON file
   token inspect TOKEN   Decode a JWT without verifying the signature

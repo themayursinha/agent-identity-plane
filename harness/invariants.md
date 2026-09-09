@@ -199,3 +199,18 @@ must be regenerated; `-jwks-url` re-fetches. Preload still mints on
 the burned `active_kid` until activate. This is the operator runbook
 surface for key compromise, not a Production claim.
 
+## AI21 — visor-session is the only supported `--client-id` path
+
+`visor-session` POSTs the STS access token to visor-gateway with a
+DPoP proof (`Authorization: DPoP` plus the `DPoP` header). The gateway
+URL uses the same policy as JWKS (`https`, or loopback `http`; TLS
+1.2+; 1MiB body; query and fragment rejected so DPoP `htu` matches).
+Only a complete mapping (`client_id`, `session_id`, acting agent,
+principal) from that response is passed to `mcp-visor serve`. Extra
+visor arguments cannot set `-client-id`, `--client-id`, `-session-id`,
+or `--session-id` (including `=` forms). `-dpop-key` is a 0600 Ed25519
+key or keyring file. `-print` prints argv and does not exec. Starting
+`mcp-visor` by hand with a typed `--client-id` is still spoofable; this
+command is the supported authentic path. This is not a DPoP nonce
+deployment and not a Production claim.
+

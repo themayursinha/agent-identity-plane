@@ -4,7 +4,8 @@ A standalone, deterministic Go implementation of an identity and provenance
 layer for AI agents: an Agent Registry, a Security Token Service
 that performs RFC 8693 token exchange with actor-chain provenance, a verifier
 and A2A client, and a visor-gateway identity PEP that derives mcp-visor's
-`--client-id` / `--session-id` from a verified actor chain.
+`--client-id` / `--session-id` from a verified actor chain. `visor-session`
+is the supported command that starts mcp-visor with that mapping.
 
 ## Boundary
 
@@ -33,8 +34,8 @@ is written (AI8), and no token is issued.
 
 ## CLI contract
 
-Subcommands: `serve`, `visor-gateway`, `registry lint`, `token inspect`,
-`token verify`, `trace`, `keys generate`, `demo`, `version`.
+Subcommands: `serve`, `visor-gateway`, `visor-session`, `registry lint`,
+`token inspect`, `token verify`, `trace`, `keys generate`, `demo`, `version`.
 
 `serve` loads a 0600 signing key or keyring (`active_kid` + `keys`),
 rejects group/world-readable key files, optional `-tls-cert`/`-tls-key`,
@@ -57,6 +58,15 @@ It reverse-proxies to `-backend` (or returns the mapping with
 and re-read on each verify. visor-gateway requires a DPoP proof bound
 to minted `cnf.jkt` and a durable `-dpop-replay` log. JWKS URLs must be
 `https` except loopback `http`. visor itself is unchanged.
+
+`visor-session` is the supported authentic start for stdio visor
+(AI21). It POSTs the access token to visor-gateway with DPoP, accepts
+only a complete mapping, and execs `mcp-visor serve` with
+`-client-id` / `-session-id` from that mapping. Extra visor arguments
+cannot set those flags. Gateway URLs follow the JWKS policy (`https`,
+or loopback `http`; no query or fragment). `-dpop-key` is a 0600 key
+file. Hand-starting visor with a typed `--client-id` is still
+spoofable. This is not a Production claim.
 
 `trace` reconstructs hops from required `-audit-log` JSONL. `-audit`
 is always chain-verified; only `-visor` may be generic JSONL. Opening

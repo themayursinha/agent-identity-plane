@@ -10,7 +10,7 @@ user --session--> oncall-agent --RFC 8693--> STS --JWT aud=investigation--> inve
                                                                       |
                                                                       +--> Agent Registry
 investigation-agent --RFC 8693--> STS --JWT aud=mcp-gateway--> visor-gateway
-visor-gateway --verified --client-id / --session-id--> mcp-visor --policy--> MCP server
+visor-gateway --identity-only JSON--> visor-session --mcp-visor serve -client-id / -session-id--> mcp-visor --policy--> MCP server
 ```
 
 ## Packages
@@ -28,6 +28,7 @@ visor-gateway --verified --client-id / --session-id--> mcp-visor --policy--> MCP
 | `internal/visoradapter` | Map a verified chain to mcp-visor identity fields |
 | `internal/denylist` | Exact-ID agent/workload/principal revocation list |
 | `internal/dpop` | RFC 9449 DPoP proofs at visor-gateway |
+| `internal/visorsession` | Fetch visor-gateway mapping; start mcp-visor with those flags only |
 
 ## Token exchange
 
@@ -54,8 +55,10 @@ flat `actchain`, narrowed `scope`, `jti`, `exp` (default 120s), and `cnf.jkt`
 This process answers *who is acting*. mcp-visor answers *whether the tool call
 is allowed*. `visor-gateway` verifies the actor chain and emits visor
 `--client-id` / `--session-id` (identity-only) or reverse-proxies to an
-HTTP backend with those headers overwritten. visor identity policy is
-then bound to a verified actor, not a spoofable CLI string. See
+HTTP backend with those headers overwritten. `visor-session` is the
+supported start for stdio visor: it takes that mapping and refuses
+caller-supplied identity flags. visor identity policy is then bound to
+a verified actor, not a spoofable CLI string. See
 [visor-integration.md](visor-integration.md).
 
 ## Bind addresses
@@ -147,4 +150,15 @@ from verified records and returns that transaction's hops. Hashed
 Event strings are valid UTF-8 and length-bounded. The chain is not a MAC (tail
 truncation, empty file, and a fully recomputed log are not detected). Key-compromise steps are in [runbooks.md](runbooks.md),
 including regenerating a visor-gateway `-jwks` file copy. This is not
-Production (no live visor-only `--client-id` path; no DPoP nonce).
+Production (no DPoP nonce).
+
+## visor-session (v0.8)
+
+`visor-session` POSTs the access token to visor-gateway (`-identity-only`)
+with a DPoP proof and starts `mcp-visor serve` using only the returned
+`-client-id` / `-session-id`. Extra visor arguments cannot set those
+flags. The gateway URL uses the same policy as JWKS (`https`, or
+loopback `http`; no query or fragment). `-dpop-key` is a 0600 Ed25519
+file. Starting visor by hand with a typed `--client-id` is still
+spoofable; this command is the supported authentic path. This is not a
+DPoP nonce deployment and not a Production identity plane.

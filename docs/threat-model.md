@@ -30,7 +30,8 @@ This document is an engineering threat model, not a compliance claim.
 | Stolen STS subject reused at exchange | `jti` consumed on first successful hop (AI12) | `replayed_token` |
 | `alg=none` / alg confusion | Header alg must match JWK type | verify fail |
 | Missing attribution | Audit record before HTTP response (AI8) | n/a |
-| Spoofed visor `--client-id` at the gateway | visor-gateway verifies Bearer and overwrites `X-Visor-*` after hop-by-hop strip (AI16) | `missing_bearer` / `invalid_token` / `incomplete_chain` |
+| Spoofed visor `--client-id` at the gateway | visor-gateway verifies Bearer/DPoP and overwrites `X-Visor-*` after hop-by-hop strip (AI16) | `missing_bearer` / `invalid_token` / `incomplete_chain` |
+| Typed visor `--client-id` bypass | visor-session starts visor only with a complete visor-gateway mapping; extra args cannot set identity flags (AI21) | process error |
 | Stolen minted JWT presented at visor-gateway | DPoP bound to `cnf.jkt` of the actor-token key (AI19) | `missing_dpop` / `invalid_dpop_proof` / `replayed_dpop` / `missing_cnf` |
 | Unspecified bind | `ValidateBind` (AI11) | process error |
 | Cleartext or empty live JWT-SVID JWKS | URL policy + empty-JWKS fail-closed (AI17) | process error / `/readyz` 503 |
@@ -44,7 +45,7 @@ This document is an engineering threat model, not a compliance claim.
 - Not mcp-visor action policy. A valid actor chain can still be denied by visor tool rules.
 - Revocation is TTL + durable `jti` replay at exchange plus an exact-ID denylist (agents, workloads, principals) at mint and at visor-gateway. Already-minted tokens are stopped at the PEP when the gateway re-reads the denylist.
 - visor-gateway requires RFC 9449 DPoP bound to minted `cnf.jkt` (a workload-possessed key). There is no DPoP nonce. STS exchange still uses `actor_token`, with optional token-endpoint DPoP to bind `cnf.jkt`. This is not a Production identity plane.
-- visor-gateway `-backend` is an HTTP reverse-proxy. mcp-visor `serve` is stdio; use `-identity-only` and start visor with the derived `--client-id` / `--session-id`.
+- visor-gateway `-backend` is an HTTP reverse-proxy. mcp-visor `serve` is stdio; use `-identity-only` and `visor-session` to start visor with the derived `--client-id` / `--session-id`. Hand-starting visor with a typed `--client-id` is still spoofable.
 - `-client-short-name` is opt-in. Last URI segments are not unique across prefixes; the default client-id is the full `act.sub`.
 - Cross-domain federation (OAuth Identity Chaining) is not implemented.
 - The STS/gateway audit hash chain is not a MAC. In-place edits fail
