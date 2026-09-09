@@ -245,6 +245,7 @@ in-flight duplicate proofs can race while a nonce is live (`jti` allows
 one); STS exchange is still `actor_token`; token-endpoint DPoP has no
 nonce. `demo -strict` fetches a visor-gateway identity-only mapping
 (with nonce retry) and rejects extra identity flags. Operator steps are
-in `docs/deploy.md`. This version is operator-ready. It is not a
-Production claim.
+in `docs/deploy.md`. Advertised `serve` paths generate keys locally
+(`keys generate` / `keys jwks`); this repo does not ship private keys.
+This version is operator-ready. It is not a Production claim.
 

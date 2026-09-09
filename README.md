@@ -51,43 +51,17 @@ Pre-built binaries and checksums are on the [Releases](https://github.com/themay
 ## Quick start
 
 ```bash
-# Generate a demo key pair and run the multi-hop scenario plus attack cases
+# In-process scenario: mint, deny, trace, visor-session mapping (no key files)
 agent-identity-plane demo
 
-# Lint a registry file
+# Lint the example registry
 agent-identity-plane registry lint testdata/registry.json
-
-# Serve the STS on loopback (never binds 0.0.0.0)
-agent-identity-plane serve \
-  -listen 127.0.0.1:8080 \
-  -registry testdata/registry.json \
-  -issuer https://sts.example.test \
-  -signing-key testdata/sts-ed25519.json \
-  -workload-keys testdata/workloads.json \
-  -idp-jwks testdata/idp-jwks.json \
-  -audit-log ./sts-audit.jsonl \
-  -replay-log ./sts-replay.jsonl \
-  -denylist testdata/denylist.json
-
-# Identity PEP: verified --client-id / --session-id (stdio visor is started separately)
-agent-identity-plane visor-gateway \
-  -listen 127.0.0.1:8090 \
-  -audience https://mcp-gateway.example.test \
-  -issuer https://sts.example.test \
-  -jwks-url http://127.0.0.1:8080/jwks.json \
-  -identity-only \
-  -audit-log ./gateway-audit.jsonl \
-  -denylist testdata/denylist.json \
-  -dpop-replay ./gateway-dpop.jsonl
-
-# Supported visor start: mapping from visor-gateway only (not a typed --client-id)
-agent-identity-plane visor-session \
-  -gateway http://127.0.0.1:8090/session \
-  -token "$JWT" \
-  -dpop-key workload.json \
-  -visor-bin mcp-visor \
-  -- -policy policy.yaml
 ```
+
+`testdata/` ships `registry.json` and `denylist.json` only. It does not
+contain STS, IdP, or workload private keys. To run `serve` /
+`visor-gateway` / `visor-session` on loopback, generate those keys first
+(`keys generate`, `keys jwks`) using [docs/deploy.md](docs/deploy.md).
 
 ## What it enforces
 

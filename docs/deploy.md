@@ -13,18 +13,37 @@ Binds must be explicit unicast hosts. Default listen addresses are
 loopback. Do not use `0.0.0.0` or `[::]`. Incident procedures are in
 [runbooks.md](runbooks.md).
 
+This repository does not ship STS, IdP, or workload private keys.
+`testdata/` has only `registry.json` and `denylist.json`. Generate key
+material locally (`keys generate` writes mode `0600`; `keys jwks`
+emits public verification JWKS with no `d`).
+
 ## Loopback visor-only stack
 
 ```bash
+mkdir -p ./run
+agent-identity-plane keys generate -kid sts-1 -out ./run/sts.json
+agent-identity-plane keys generate -kid idp-1 -out ./run/idp.json
+agent-identity-plane keys generate -kid wl-oncall -out ./run/wl-oncall.json
+agent-identity-plane keys generate -kid wl-invest -out ./run/wl-invest.json
+agent-identity-plane keys generate -kid wl-monitor -out ./run/wl-monitor.json
+agent-identity-plane keys jwks -in ./run/idp.json -out ./run/idp-jwks.json
+agent-identity-plane keys jwks \
+  -in ./run/wl-oncall.json \
+  -in ./run/wl-invest.json \
+  -in ./run/wl-monitor.json \
+  -out ./run/workloads.json
+
 agent-identity-plane serve \
   -listen 127.0.0.1:8080 \
   -registry testdata/registry.json \
   -issuer https://sts.example.test \
-  -signing-key testdata/sts-ed25519.json \
-  -workload-keys testdata/workloads.json \
-  -idp-jwks testdata/idp-jwks.json \
-  -audit-log ./sts-audit.jsonl \
-  -replay-log ./sts-replay.jsonl \
+  -signing-key ./run/sts.json \
+  -workload-keys ./run/workloads.json \
+  -idp-jwks ./run/idp-jwks.json \
+  -idp-issuer https://idp.example.test \
+  -audit-log ./run/sts-audit.jsonl \
+  -replay-log ./run/sts-replay.jsonl \
   -denylist testdata/denylist.json
 
 agent-identity-plane visor-gateway \
@@ -33,17 +52,22 @@ agent-identity-plane visor-gateway \
   -issuer https://sts.example.test \
   -jwks-url http://127.0.0.1:8080/jwks.json \
   -identity-only \
-  -audit-log ./gateway-audit.jsonl \
+  -audit-log ./run/gateway-audit.jsonl \
   -denylist testdata/denylist.json \
-  -dpop-replay ./gateway-dpop.jsonl
+  -dpop-replay ./run/gateway-dpop.jsonl
 
 agent-identity-plane visor-session \
   -gateway http://127.0.0.1:8090/session \
   -token "$JWT" \
-  -dpop-key workload.json \
+  -dpop-key ./run/wl-invest.json \
   -visor-bin mcp-visor \
   -- -policy policy.yaml
 ```
+
+`$JWT` is an STS-minted access token for audience
+`https://mcp-gateway.example.test`, not a file in this repo. Actor
+tokens are signed with the workload private keys above; first-hop user
+tokens must verify against `./run/idp-jwks.json`.
 
 `visor-session` POSTs the access token with DPoP and retries once on
 `use_dpop_nonce`. Identity flags come only from that mapping.
@@ -61,4 +85,5 @@ For an HTTP MCP front, use visor-gateway `-backend` instead of
 - The audit hash chain is not a MAC.
 
 `demo -strict` exercises mint, deny, `trace`, visor-gateway identity-only
-Fetch (including nonce retry), and rejection of a typed `--client-id`.
+Fetch (including nonce retry), and rejection of a typed `--client-id`
+without operator key files.

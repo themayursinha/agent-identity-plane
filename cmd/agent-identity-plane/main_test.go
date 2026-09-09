@@ -93,6 +93,52 @@ func TestCLIDemoAndLint(t *testing.T) {
 	}
 }
 
+func TestCLIKeysJWKSOmitsPrivateMaterial(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "aip")
+	cmd := exec.Command("go", "build", "-o", bin, ".")
+	cmd.Dir = "."
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	dir := t.TempDir()
+	in := filepath.Join(dir, "sts.json")
+	jwksPath := filepath.Join(dir, "jwks.json")
+	gen := exec.Command(bin, "keys", "generate", "-kid", "sts-1", "-out", in)
+	out, err = gen.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generate: %v\n%s", err, out)
+	}
+	jw := exec.Command(bin, "keys", "jwks", "-in", in, "-out", jwksPath)
+	out, err = jw.CombinedOutput()
+	if err != nil {
+		t.Fatalf("jwks: %v\n%s", err, out)
+	}
+	raw, err := os.ReadFile(jwksPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"d"`) {
+		t.Fatalf("private key leaked: %s", raw)
+	}
+	ks, err := token.ParseJWKS(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ks.Keys) != 1 || ks.Keys[0].KID != "sts-1" {
+		t.Fatalf("%+v", ks)
+	}
+	open := filepath.Join(dir, "open.json")
+	if err := os.WriteFile(open, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bad := exec.Command(bin, "keys", "jwks", "-in", open, "-out", filepath.Join(dir, "nope.json"))
+	out, err = bad.CombinedOutput()
+	if err == nil {
+		t.Fatalf("world-readable input must fail: %s", out)
+	}
+}
+
 func TestCLIVisorSessionRejectsTypedClientID(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "aip")
 	cmd := exec.Command("go", "build", "-o", bin, ".")

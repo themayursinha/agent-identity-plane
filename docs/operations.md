@@ -21,7 +21,10 @@ If a reverse proxy terminates TLS instead:
 ## Signing keys
 
 `keys generate -out FILE` writes mode `0600`. `serve` refuses group- or
-world-readable signing files.
+world-readable signing files. `keys jwks -in FILE` reads those 0600
+files and writes a public JWKS (no `d`) for `-workload-keys` /
+`-idp-jwks`. Do not commit private keys. The visor-only copy-paste is
+[deploy.md](deploy.md).
 
 Single key:
 
