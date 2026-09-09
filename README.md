@@ -114,6 +114,7 @@ agent-identity-plane visor-session \
 | AI19 | visor-gateway requires a DPoP proof bound to minted `cnf.jkt` |
 | AI20 | `trace` verifies the audit hash chain and reconstructs by `txn` or `jti` |
 | AI21 | `visor-session` starts mcp-visor only with visor-gateway mapping identity |
+| AI22 | visor-gateway requires a server-issued DPoP nonce |
 
 ## Architecture
 
@@ -145,9 +146,10 @@ CLI: `serve`, `visor-gateway`, `visor-session`, `registry lint`, `token inspect|
 - **v0.3 visor-gateway:** first-class identity PEP. JWKS file or `https` URL (loopback `http` allowed). Verified `--client-id` / `--session-id`; optional HTTP reverse-proxy that overwrites `X-Visor-*`. mcp-visor is unchanged.
 - **v0.4 live workload JWKS:** `serve` may fetch JWT-SVID keys from `-spiffe-jwks-url` or `-spiffe-oidc-issuer` (same URL/TLS policy as visor-gateway). Still not Workload API.
 - **v0.5 agent denylist:** owned JSON of agent, workload, and principal IDs. Exact match. Enforced at mint and at visor-gateway (in-flight hops).
-- **v0.6 DPoP at visor-gateway:** minted tokens carry `cnf.jkt` of a workload-possessed key. visor-gateway requires a DPoP proof (`htm`/`htu`/`ath`/`jti`) whose JWK thumbprint matches, with durable proof-jti replay. Not Production (no DPoP nonce; STS exchange is still actor_token).
-- **v0.7 incident reconstruction:** `trace -audit` verifies the STS/gateway hash chain (not a MAC) and looks up hops by `txn` or minted `jti` from verified records. Key-compromise procedures are in [runbooks](docs/runbooks.md). Not Production (no DPoP nonce).
-- **v0.8 visor-session:** the supported path that starts mcp-visor with `-client-id` / `-session-id` taken only from a visor-gateway identity-only mapping. Extra visor args cannot set those flags. Typing `mcp-visor serve -client-id …` by hand is still spoofable. Not Production (no DPoP nonce).
+- **v0.6 DPoP at visor-gateway:** minted tokens carry `cnf.jkt` of a workload-possessed key. visor-gateway requires a DPoP proof (`htm`/`htu`/`ath`/`jti`) whose JWK thumbprint matches, with durable proof-jti replay. Not Production (STS exchange is still actor_token).
+- **v0.7 incident reconstruction:** `trace -audit` verifies the STS/gateway hash chain (not a MAC) and looks up hops by `txn` or minted `jti` from verified records. Key-compromise procedures are in [runbooks](docs/runbooks.md). Not Production.
+- **v0.8 visor-session:** the supported path that starts mcp-visor with `-client-id` / `-session-id` taken only from a visor-gateway identity-only mapping. Extra visor args cannot set those flags. Typing `mcp-visor serve -client-id …` by hand is still spoofable. Not Production.
+- **v0.9 DPoP nonce:** visor-gateway requires RFC 9449 `use_dpop_nonce`. Nonces are unguessable, single-use, and process-local. visor-session and the A2A tripper retry once. Not Production (no live visor-only operator deployment; STS exchange is still `actor_token`).
 - **Not a host sandbox and not an MCP policy proxy**
 
 ## Documentation

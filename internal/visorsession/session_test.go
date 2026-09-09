@@ -99,6 +99,32 @@ func TestFetchIdentityOnlyMapping(t *testing.T) {
 	}
 }
 
+func TestFetchRetriesUseDPoPNonceOnce(t *testing.T) {
+	kf, err := token.GenerateEd25519("wl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n++
+		w.Header().Set("WWW-Authenticate", `DPoP error="use_dpop_nonce", algs="EdDSA"`)
+		w.Header().Set("DPoP-Nonce", "n-test")
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(ts.Close)
+	_, err = visorsession.Fetch(context.Background(), visorsession.Request{
+		GatewayURL: ts.URL + "/session",
+		Token:      "not-a-jwt",
+		ProofKey:   kf,
+	})
+	if err == nil {
+		t.Fatal("expected gateway error")
+	}
+	if n != 2 {
+		t.Fatalf("requests %d", n)
+	}
+}
+
 func TestCommandRejectsIdentityFlags(t *testing.T) {
 	m := completeMapping()
 	cases := [][]string{

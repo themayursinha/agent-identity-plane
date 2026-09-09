@@ -10,14 +10,14 @@ Agent Identity Plane fills that gap **without modifying mcp-visor**:
 1. Agents obtain a next-hop token from this STS (`aud` = the visor-gateway).
 2. `agent-identity-plane visor-gateway` verifies the Bearer token (JWKS
    file or `https` URL, re-fetched on each request) **and** a `DPoP`
-   proof bound to the token's `cnf.jkt`.
+   proof bound to the token's `cnf.jkt`, including a server-issued nonce.
 3. `internal/visoradapter` maps the verified chain:
    - `--client-id` ← acting agent (`act.sub`). `-client-short-name` is
      opt-in and uses the last URI segment; that can collide across prefixes.
    - `--session-id` ← `txn`
 4. `-identity-only` returns that mapping as JSON and headers.
    `agent-identity-plane visor-session` POSTs to that endpoint with
-   DPoP and starts `mcp-visor serve -client-id … -session-id …` with
+   DPoP (one retry on `use_dpop_nonce`) and starts `mcp-visor serve -client-id … -session-id …` with
    **only** those returned values. Extra visor args cannot set identity
    flags. visor stdio is not an HTTP server. Typing `mcp-visor serve
    -client-id …` by hand is still spoofable.

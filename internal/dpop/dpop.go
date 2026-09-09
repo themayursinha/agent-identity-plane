@@ -44,18 +44,20 @@ type proofHeader struct {
 }
 
 type proofClaims struct {
-	JTI string `json:"jti"`
-	HTM string `json:"htm"`
-	HTU string `json:"htu"`
-	IAT int64  `json:"iat"`
-	ATH string `json:"ath,omitempty"`
+	JTI   string `json:"jti"`
+	HTM   string `json:"htm"`
+	HTU   string `json:"htu"`
+	IAT   int64  `json:"iat"`
+	ATH   string `json:"ath,omitempty"`
+	Nonce string `json:"nonce,omitempty"`
 }
 
 // Result is a verified proof identity for durable jti consumption.
 type Result struct {
-	JTI string
-	IAT int64
-	JKT string
+	JTI   string
+	IAT   int64
+	JKT   string
+	Nonce string
 }
 
 // AccessTokenHash is base64url(SHA-256(access_token)) as in RFC 9449 ath.
@@ -114,6 +116,11 @@ func escapedPath(r *http.Request) string {
 
 // Prove signs a DPoP JWT with the workload key for this hop.
 func Prove(kf *token.KeyFile, method, htu, accessToken string, now time.Time) (string, error) {
+	return ProveWithNonce(kf, method, htu, accessToken, now, "")
+}
+
+// ProveWithNonce is Prove plus an RFC 9449 nonce claim when nonce is set.
+func ProveWithNonce(kf *token.KeyFile, method, htu, accessToken string, now time.Time, nonce string) (string, error) {
 	if kf == nil {
 		return "", ErrInvalidProof
 	}
@@ -134,10 +141,11 @@ func Prove(kf *token.KeyFile, method, htu, accessToken string, now time.Time) (s
 		now = time.Now().UTC()
 	}
 	pc := proofClaims{
-		JTI: newJTI(),
-		HTM: method,
-		HTU: htu,
-		IAT: now.Unix(),
+		JTI:   newJTI(),
+		HTM:   method,
+		HTU:   htu,
+		IAT:   now.Unix(),
+		Nonce: strings.TrimSpace(nonce),
 	}
 	if accessToken != "" {
 		pc.ATH = AccessTokenHash(accessToken)
@@ -245,7 +253,7 @@ func Verify(r *http.Request, accessToken, wantJKT string, now time.Time) (Result
 	if unix > c.IAT+int64(skew.Seconds()) || unix+int64(skew.Seconds()) < c.IAT {
 		return Result{}, ErrInvalidProof
 	}
-	return Result{JTI: c.JTI, IAT: c.IAT, JKT: jkt}, nil
+	return Result{JTI: c.JTI, IAT: c.IAT, JKT: jkt, Nonce: c.Nonce}, nil
 }
 
 func rejectPrivateJWK(raw json.RawMessage) error {

@@ -1,7 +1,7 @@
-# Operator runbooks (v0.8)
+# Operator runbooks (v0.9)
 
 These procedures use the shipped CLI. This is still not a Production
-identity plane: there is no DPoP nonce. visor `--client-id` is authentic
+identity plane. visor `--client-id` is authentic
 only when `visor-session` (or visor-gateway `-backend` header overwrite)
 is the path that sets it. Typing `mcp-visor serve -client-id …` by hand
 is still spoofable.
@@ -88,10 +88,11 @@ theft of a minted JWT *without* that key.
 
 ## Residual proof-of-possession
 
-visor-gateway requires RFC 9449 DPoP bound to minted `cnf.jkt`. There
-is no DPoP nonce. A proof `jti` already consumed in `-dpop-replay` is
-rejected. An intercepted proof can still win a race before that first
-consume, or be replayed if the durable log is lost before
-`iat + ClockSkew`. STS exchange still uses `actor_token`;
+visor-gateway requires RFC 9449 DPoP bound to minted `cnf.jkt`, including
+a server-issued nonce (`use_dpop_nonce`). A proof `jti` already consumed
+in `-dpop-replay` is rejected. Restart forgets process-local nonces, so a
+captured proof cannot be replayed from a lost durable log. Two in-flight
+copies of the same proof can still race while that nonce is live; `jti`
+consume allows only one. STS exchange still uses `actor_token`;
 token-endpoint DPoP only binds `cnf.jkt` for hops whose actor token is
-not a possessed key (JWT-SVID).
+not a possessed key (JWT-SVID) and does not use a nonce.

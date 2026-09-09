@@ -1,6 +1,6 @@
 {
   "task_id": "T-AIP-001-actor-chain-exchange",
-  "invariant_ids": ["AI1", "AI2", "AI3", "AI4", "AI5", "AI6", "AI7", "AI8", "AI9", "AI10", "AI11", "AI12", "AI13", "AI14", "AI15", "AI16", "AI17", "AI18", "AI19", "AI20", "AI21"],
+  "invariant_ids": ["AI1", "AI2", "AI3", "AI4", "AI5", "AI6", "AI7", "AI8", "AI9", "AI10", "AI11", "AI12", "AI13", "AI14", "AI15", "AI16", "AI17", "AI18", "AI19", "AI20", "AI21", "AI22"],
   "security_sensitive": true,
   "security_problem": "Agentic workflows drop originating-user and intermediate-agent provenance at each hop. Downstream MCP tools see a generic service identity, tokens minted for one audience can be replayed to another, and a workload can impersonate an agent it is not authorized to host. mcp-visor identity policy matches an unauthenticated --client-id string.",
   "required_behavior": "RFC 8693 token exchange mints a single-hop, short-lived JWT only when the actor token attests a workload, the agent is registered on that workload, the audience is an allowed next hop, scopes only narrow, depth is within cap, and the actor chain is reconstructed from the verified prior token. STS-issued subject jtis are single-use at exchange. Signing JWKS may contain overlapping kids. Invalid registry/key reloads keep the previous snapshot. The visor adapter derives --client-id and --session-id from the verified chain. Every decision is a hash-linked audit record with a stable reason code.",

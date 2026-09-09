@@ -56,11 +56,13 @@ hop-by-hop stripping (client-id is the full `act.sub` unless
 It reverse-proxies to `-backend` (or returns the mapping with
 `-identity-only`). Audit writes fail closed. `-denylist` is required
 and re-read on each verify. visor-gateway requires a DPoP proof bound
-to minted `cnf.jkt` and a durable `-dpop-replay` log. JWKS URLs must be
+to minted `cnf.jkt`, a durable `-dpop-replay` log, and a server-issued
+DPoP nonce (AI22). JWKS URLs must be
 `https` except loopback `http`. visor itself is unchanged.
 
 `visor-session` is the supported authentic start for stdio visor
-(AI21). It POSTs the access token to visor-gateway with DPoP, accepts
+(AI21). It POSTs the access token to visor-gateway with DPoP, retries
+once on `use_dpop_nonce`, accepts
 only a complete identity-only mapping (`application/vnd.aip.visor-mapping+json`
 with matching `X-Visor-*` headers), and execs `mcp-visor serve` with
 `-client-id` / `-session-id` from that mapping. Extra visor arguments
