@@ -139,7 +139,8 @@ agent-identity-plane visor-session \
 
 `-gateway` must be `https` except loopback `http`, with no query or
 fragment (DPoP `htu` matches the PEP). Redirects are not followed.
-`-dpop-key` is mode `0600`.
+Identity-only responses use `application/vnd.aip.visor-mapping+json`;
+a `-backend` body is not a mapping. `-dpop-key` is mode `0600`.
 `-print` prints argv and does not exec. The token may be passed as
 `-token` or `AIP_ACCESS_TOKEN`. On Unix the process is replaced by
 visor, and `AIP_ACCESS_TOKEN` is stripped from visor's environment

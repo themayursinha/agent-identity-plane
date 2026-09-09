@@ -20,6 +20,14 @@ type Mapping struct {
 	Lineage     map[string]string `json:"lineage"`
 }
 
+const (
+	// MappingContentType is the identity-only visor-gateway JSON mapping.
+	// Reverse-proxied backend responses must not use this type.
+	MappingContentType = "application/vnd.aip.visor-mapping+json"
+	HeaderClientID     = "X-Visor-Client-Id"
+	HeaderSessionID    = "X-Visor-Session-Id"
+)
+
 // Options controls how agent URIs become visor identity names.
 type Options struct {
 	// ShortName, when true, uses the last path segment of the acting agent

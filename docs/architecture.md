@@ -156,7 +156,8 @@ Production (no DPoP nonce).
 
 `visor-session` POSTs the access token to visor-gateway (`-identity-only`)
 with a DPoP proof and starts `mcp-visor serve` using only the returned
-`-client-id` / `-session-id`. Extra visor arguments cannot set those
+`-client-id` / `-session-id`. The identity-only response uses a dedicated
+JSON media type; a `-backend` reverse-proxy body is not accepted. Extra visor arguments cannot set those
 flags. The gateway URL uses the same policy as JWKS (`https`, or
 loopback `http`; no query or fragment). Redirects are not followed.
 On Unix the process is replaced by visor; `AIP_ACCESS_TOKEN` is not

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -159,12 +160,19 @@ func Fetch(ctx context.Context, req Request) (visoradapter.Mapping, error) {
 	if resp.StatusCode != http.StatusOK {
 		return zero, fmt.Errorf("visorsession: gateway status %d", resp.StatusCode)
 	}
+	if !isMappingContentType(resp.Header.Get("Content-Type")) {
+		return zero, fmt.Errorf("%w: response is not an identity-only mapping", ErrMapping)
+	}
 	var m visoradapter.Mapping
 	if err := jsonutil.Unmarshal(raw, &m); err != nil {
 		return zero, fmt.Errorf("%w: %v", ErrMapping, err)
 	}
 	if err := m.Complete(); err != nil {
 		return zero, fmt.Errorf("%w: %v", ErrMapping, err)
+	}
+	if resp.Header.Get(visoradapter.HeaderClientID) != m.ClientID ||
+		resp.Header.Get(visoradapter.HeaderSessionID) != m.SessionID {
+		return zero, fmt.Errorf("%w: visor identity headers do not match mapping", ErrMapping)
 	}
 	return m, nil
 }
@@ -198,6 +206,11 @@ func Command(visorBin string, m visoradapter.Mapping, extra []string) (string, [
 	args := []string{"serve", "-client-id", m.ClientID, "-session-id", m.SessionID}
 	args = append(args, extra...)
 	return visorBin, args, nil
+}
+
+func isMappingContentType(h string) bool {
+	mt, _, err := mime.ParseMediaType(h)
+	return err == nil && mt == visoradapter.MappingContentType
 }
 
 // FormatArgv joins name and args with spaces for -print.

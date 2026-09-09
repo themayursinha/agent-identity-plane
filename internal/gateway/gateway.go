@@ -39,8 +39,8 @@ const (
 )
 
 const (
-	headerVisorClient  = "X-Visor-Client-Id"
-	headerVisorSession = "X-Visor-Session-Id"
+	headerVisorClient  = visoradapter.HeaderClientID
+	headerVisorSession = visoradapter.HeaderSessionID
 	headerActorChain   = "X-Actor-Chain"
 )
 
@@ -187,7 +187,7 @@ func (c *Config) handlePEP(w http.ResponseWriter, r *http.Request) {
 	c.Metrics.Allowed.Add(1)
 	applyIdentityHeaders(w.Header(), m)
 	if c.IdentityOnly || c.Backend == nil {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", visoradapter.MappingContentType)
 		_ = json.NewEncoder(w).Encode(m)
 		return
 	}

@@ -131,12 +131,61 @@ func TestFetchRejectsCallerSpoofJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", visoradapter.MappingContentType)
+		w.Header().Set(visoradapter.HeaderClientID, "spoofed")
+		w.Header().Set(visoradapter.HeaderSessionID, "txn")
 		_ = json.NewEncoder(w).Encode(map[string]string{"client_id": "spoofed"})
 	}))
 	t.Cleanup(ts.Close)
 	_, err = visorsession.Fetch(context.Background(), visorsession.Request{
 		GatewayURL: ts.URL + "/session",
 		Token:      "not-a-jwt",
+		ProofKey:   kf,
+	})
+	if !errors.Is(err, visorsession.ErrMapping) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestFetchRejectsGenericJSONBody(t *testing.T) {
+	kf, err := token.GenerateEd25519("wl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := completeMapping()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(visoradapter.HeaderClientID, m.ClientID)
+		w.Header().Set(visoradapter.HeaderSessionID, m.SessionID)
+		_ = json.NewEncoder(w).Encode(m)
+	}))
+	t.Cleanup(ts.Close)
+	_, err = visorsession.Fetch(context.Background(), visorsession.Request{
+		GatewayURL: ts.URL + "/session",
+		Token:      "tok",
+		ProofKey:   kf,
+	})
+	if !errors.Is(err, visorsession.ErrMapping) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestFetchRejectsHeaderMappingMismatch(t *testing.T) {
+	kf, err := token.GenerateEd25519("wl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := completeMapping()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", visoradapter.MappingContentType)
+		w.Header().Set(visoradapter.HeaderClientID, "spoofed")
+		w.Header().Set(visoradapter.HeaderSessionID, m.SessionID)
+		_ = json.NewEncoder(w).Encode(m)
+	}))
+	t.Cleanup(ts.Close)
+	_, err = visorsession.Fetch(context.Background(), visorsession.Request{
+		GatewayURL: ts.URL + "/session",
+		Token:      "tok",
 		ProofKey:   kf,
 	})
 	if !errors.Is(err, visorsession.ErrMapping) {
