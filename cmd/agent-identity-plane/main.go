@@ -87,7 +87,7 @@ Commands:
   token inspect TOKEN   Decode a JWT without verifying the signature
   token verify ...      Verify a JWT against a JWKS and audience
   trace                 Reconstruct a txn or minted jti from STS and visor JSONL logs
-  keys generate         Write a new Ed25519 key file (mode 0600)
+  keys generate         Write a new Ed25519 key file (mode 0600; -sub binds workload keys)
   keys jwks             Write a public JWKS from one or more 0600 key files
   demo                  Run the multi-hop scenario and attack cases
   version               Print the version
@@ -195,13 +195,27 @@ func tokenArg(args []string) (string, error) {
 func cmdKeysGenerate(args []string) error {
 	kid := "sts-1"
 	out := ""
+	sub := ""
+	usage := "usage: agent-identity-plane keys generate [-kid KID] [-sub URI] [-out FILE]"
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "-kid":
 			i++
+			if i >= len(args) {
+				return fmt.Errorf("%s", usage)
+			}
 			kid = args[i]
+		case "-sub":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("%s", usage)
+			}
+			sub = args[i]
 		case "-out":
 			i++
+			if i >= len(args) {
+				return fmt.Errorf("%s", usage)
+			}
 			out = args[i]
 		default:
 			return fmt.Errorf("unknown flag %s", args[i])
@@ -211,6 +225,7 @@ func cmdKeysGenerate(args []string) error {
 	if err != nil {
 		return err
 	}
+	kf.Sub = sub
 	b, err := json.MarshalIndent(kf, "", "  ")
 	if err != nil {
 		return err
@@ -220,7 +235,7 @@ func cmdKeysGenerate(args []string) error {
 		_, err = os.Stdout.Write(b)
 		return err
 	}
-	return os.WriteFile(out, b, 0o600)
+	return token.WriteSecretFile(out, b)
 }
 
 func cmdKeysJWKS(args []string) error {

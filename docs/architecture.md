@@ -122,9 +122,10 @@ not denylisted.
 
 Minted STS tokens include `cnf.jkt`, the RFC 7638 thumbprint of a
 **workload-possessed** key. For localkeys actor tokens that is the
-verifying JWK. A JWT-SVID is signed by the SPIFFE issuer, so that
-issuer JWK is not `cnf.jkt`; the caller binds a possessed key with a
-token-endpoint DPoP proof (`ath` omitted) on `POST /oauth/token`.
+verifying JWK, which must carry that workload's `sub`. A JWT-SVID is
+signed by the SPIFFE issuer, so that issuer JWK is not `cnf.jkt`; the
+caller binds a possessed key with a token-endpoint DPoP proof (`ath`
+omitted) on `POST /oauth/token`.
 visor-gateway requires a `DPoP` proof JWT (`typ=dpop+jwt`) whose embedded public JWK
 thumbprint equals `cnf.jkt`. The proof must match this request's
 method (`htm`), reconstructed URI (`htu`: TLS→https else http, `Host`,

@@ -24,9 +24,9 @@ emits public verification JWKS with no `d`).
 mkdir -p ./run
 agent-identity-plane keys generate -kid sts-1 -out ./run/sts.json
 agent-identity-plane keys generate -kid idp-1 -out ./run/idp.json
-agent-identity-plane keys generate -kid wl-oncall -out ./run/wl-oncall.json
-agent-identity-plane keys generate -kid wl-invest -out ./run/wl-invest.json
-agent-identity-plane keys generate -kid wl-monitor -out ./run/wl-monitor.json
+agent-identity-plane keys generate -kid wl-oncall -sub spiffe://example.test/workload/oncall -out ./run/wl-oncall.json
+agent-identity-plane keys generate -kid wl-invest -sub spiffe://example.test/workload/investigation -out ./run/wl-invest.json
+agent-identity-plane keys generate -kid wl-monitor -sub spiffe://example.test/workload/monitoring -out ./run/wl-monitor.json
 agent-identity-plane keys jwks -in ./run/idp.json -out ./run/idp-jwks.json
 agent-identity-plane keys jwks \
   -in ./run/wl-oncall.json \

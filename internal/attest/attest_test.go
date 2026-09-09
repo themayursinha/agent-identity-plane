@@ -183,16 +183,82 @@ func TestFirstSuccessfulReadyRequiresLive(t *testing.T) {
 
 func TestWrongAudience(t *testing.T) {
 	kf, _ := token.GenerateEd25519("wl")
+	kf.Sub = "spiffe://example.test/workload/oncall"
 	signer, _ := token.SignerFromKeyFile(kf)
 	now := time.Now()
 	raw, _ := signer.SignClaims(token.Claims{
 		Iss: "spiffe://example.test",
-		Sub: "spiffe://example.test/workload/oncall",
+		Sub: kf.Sub,
 		Aud: token.Audience{"https://other"},
 		Exp: now.Add(time.Minute).Unix(),
 	})
 	a := &LocalKeys{Keys: signer.JWKS(), Audience: "https://sts.example.test", Now: func() int64 { return now.Unix() }}
 	if _, err := a.Attest(context.Background(), raw); err != ErrAudience {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestLocalKeysRejectsCrossWorkloadSubject(t *testing.T) {
+	oncall, err := token.GenerateEd25519("wl-oncall")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oncall.Sub = "spiffe://example.test/workload/oncall"
+	invest, err := token.GenerateEd25519("wl-invest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	invest.Sub = "spiffe://example.test/workload/investigation"
+	oncallSigner, err := token.SignerFromKeyFile(oncall)
+	if err != nil {
+		t.Fatal(err)
+	}
+	investSigner, err := token.SignerFromKeyFile(invest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	raw, err := oncallSigner.SignClaims(token.Claims{
+		Iss: "spiffe://example.test",
+		Sub: invest.Sub,
+		Aud: token.Audience{"https://sts.example.test"},
+		Exp: now.Add(time.Minute).Unix(),
+		Iat: now.Unix(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &LocalKeys{
+		Keys:     token.MergeJWKS(oncallSigner.JWKS(), investSigner.JWKS()),
+		Audience: "https://sts.example.test",
+		Now:      func() int64 { return now.Unix() },
+	}
+	if _, err := a.Attest(context.Background(), raw); err != ErrUnattested {
+		t.Fatalf("cross-workload sub must fail: %v", err)
+	}
+}
+
+func TestLocalKeysRejectsUnboundJWK(t *testing.T) {
+	kf, err := token.GenerateEd25519("wl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := token.SignerFromKeyFile(kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	raw, err := signer.SignClaims(token.Claims{
+		Iss: "spiffe://example.test",
+		Sub: "spiffe://example.test/workload/oncall",
+		Aud: token.Audience{"https://sts.example.test"},
+		Exp: now.Add(time.Minute).Unix(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &LocalKeys{Keys: signer.JWKS(), Audience: "https://sts.example.test", Now: func() int64 { return now.Unix() }}
+	if _, err := a.Attest(context.Background(), raw); err != ErrUnattested {
+		t.Fatalf("unbound JWK must fail: %v", err)
 	}
 }

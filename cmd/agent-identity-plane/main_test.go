@@ -139,6 +139,54 @@ func TestCLIKeysJWKSOmitsPrivateMaterial(t *testing.T) {
 	}
 }
 
+func TestCLIKeysGenerateBindsSubAndOverwritesMode(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "aip")
+	cmd := exec.Command("go", "build", "-o", bin, ".")
+	cmd.Dir = "."
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	dir := t.TempDir()
+	in := filepath.Join(dir, "wl.json")
+	if err := os.WriteFile(in, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sub := "spiffe://example.test/workload/oncall"
+	gen := exec.Command(bin, "keys", "generate", "-kid", "wl-oncall", "-sub", sub, "-out", in)
+	out, err = gen.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generate: %v\n%s", err, out)
+	}
+	st, err := os.Stat(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %o", st.Mode().Perm())
+	}
+	jwksPath := filepath.Join(dir, "jwks.json")
+	jw := exec.Command(bin, "keys", "jwks", "-in", in, "-out", jwksPath)
+	out, err = jw.CombinedOutput()
+	if err != nil {
+		t.Fatalf("jwks: %v\n%s", err, out)
+	}
+	raw, err := os.ReadFile(jwksPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ks, err := token.ParseJWKS(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ks.Keys) != 1 || ks.Keys[0].KID != "wl-oncall" || ks.Keys[0].Sub != sub {
+		t.Fatalf("%+v", ks)
+	}
+	if strings.Contains(string(raw), `"d"`) {
+		t.Fatalf("private key leaked: %s", raw)
+	}
+}
+
 func TestCLIVisorSessionRejectsTypedClientID(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "aip")
 	cmd := exec.Command("go", "build", "-o", bin, ".")

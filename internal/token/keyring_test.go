@@ -177,6 +177,31 @@ func TestCheckSecretFileMode(t *testing.T) {
 	}
 }
 
+func TestWriteSecretFileEnforcesModeOnOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "key.json")
+	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSecretFile(path, []byte("new\n")); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %o", st.Mode().Perm())
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "new\n" {
+		t.Fatalf("%q", b)
+	}
+}
+
 func TestParseSigningMaterialUnknownField(t *testing.T) {
 	k1 := mustKey(t, "sts-1")
 	raw, err := json.Marshal(k1)

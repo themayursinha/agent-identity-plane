@@ -51,6 +51,7 @@ func (k *KeyFile) PublicJWKS() JWKS {
 		Crv: k.Crv,
 		X:   k.X,
 		Use: "sig",
+		Sub: k.Sub,
 	}}}
 }
 
@@ -63,6 +64,7 @@ func (k *KeyFile) PublicJWK() JWK {
 		Crv: k.Crv,
 		X:   k.X,
 		Use: "sig",
+		Sub: k.Sub,
 	}
 }
 
@@ -99,7 +101,9 @@ func SignerFromKeyFile(k *KeyFile) (*Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewSigner(priv, k.KID), nil
+	s := NewSigner(priv, k.KID)
+	s.sub = k.Sub
+	return s, nil
 }
 
 // MarshalJSON encodes a KeyFile. Callers that persist private keys must

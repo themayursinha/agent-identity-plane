@@ -51,12 +51,13 @@ type JWK struct {
 	Y   string `json:"y,omitempty"`
 	N   string `json:"n,omitempty"`
 	E   string `json:"e,omitempty"`
+	Sub string `json:"sub,omitempty"`
 }
 
 // PublicEqual reports whether two JWKs are the same verification key.
 func (j JWK) PublicEqual(o JWK) bool {
 	return j.KID == o.KID && j.Kty == o.Kty && j.Use == o.Use && j.Alg == o.Alg &&
-		j.Crv == o.Crv && j.X == o.X && j.Y == o.Y && j.N == o.N && j.E == o.E
+		j.Crv == o.Crv && j.X == o.X && j.Y == o.Y && j.N == o.N && j.E == o.E && j.Sub == o.Sub
 }
 
 // JWKS is a JSON Web Key Set.
@@ -68,6 +69,7 @@ type JWKS struct {
 type Signer struct {
 	key ed25519.PrivateKey
 	kid string
+	sub string
 }
 
 func NewSigner(key ed25519.PrivateKey, kid string) *Signer {
@@ -85,6 +87,7 @@ func (s *Signer) PublicJWK() JWK {
 		Alg: AlgEdDSA,
 		Crv: "Ed25519",
 		X:   B64Encode(pub),
+		Sub: s.sub,
 	}
 }
 

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -210,6 +212,40 @@ func CheckSecretFileMode(path string) error {
 	}
 	if perm := fi.Mode().Perm(); perm&0o077 != 0 {
 		return fmt.Errorf("%w: %s must not be group/world-readable (mode %o)", ErrInvalidKey, path, perm)
+	}
+	return nil
+}
+
+// WriteSecretFile writes b to path as a regular file mode 0600, including
+// when replacing a more-permissive existing destination.
+func WriteSecretFile(path string, b []byte) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("%w: secret path required", ErrInvalidKey)
+	}
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, ".aip-secret-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	cleanup := func() { _ = os.Remove(tmp) }
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		cleanup()
+		return err
+	}
+	if _, err := f.Write(b); err != nil {
+		_ = f.Close()
+		cleanup()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		cleanup()
+		return err
 	}
 	return nil
 }
