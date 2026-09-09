@@ -1,7 +1,8 @@
-# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist, v0.6 DPoP, v0.7 trace, v0.8 visor-session, v0.9 DPoP nonce)
+# Operations (v1.0 operator-ready visor-only path)
 
-This is an operable single-node STS, not a production identity plane.
-Loopback binds and fail-closed minting still apply. Incident procedures
+This is an operable single-node identity plane, not a Production claim.
+Loopback binds and fail-closed minting still apply. The visor-only
+operator path is [deploy.md](deploy.md). Incident procedures
 (key compromise, `trace -jti` / `-txn`) are in [runbooks.md](runbooks.md).
 
 ## TLS and reverse proxy
@@ -19,8 +20,18 @@ If a reverse proxy terminates TLS instead:
 
 ## Signing keys
 
-`keys generate -out FILE` writes mode `0600`. `serve` refuses group- or
-world-readable signing files.
+`keys generate -out FILE` writes mode `0600`, including when replacing
+a more-permissive file. `serve` refuses group- or world-readable signing
+files. `keys jwks -in FILE` reads those 0600 files and writes a public
+JWKS (no `d`) for `-workload-keys` / `-idp-jwks`. Workload keys in that
+bundle must be generated with `-sub` so each verifying JWK is bound to
+that subject; an unbound localkeys JWK is unattested. Do not commit
+private keys. The visor-only copy-paste is [deploy.md](deploy.md).
+
+`token mint` signs a first-hop user JWT (`-idp-key`) or a later hop
+from `-subject-token`, signs the workload actor JWT (`-actor-key` with
+`-sub`), and POSTs `/oauth/token`. The STS URL must be `https` or
+loopback `http`. Redirects are rejected.
 
 Single key:
 

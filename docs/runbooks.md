@@ -1,10 +1,10 @@
-# Operator runbooks (v0.9)
+# Operator runbooks (v1.0)
 
 These procedures use the shipped CLI. This is still not a Production
 identity plane. visor `--client-id` is authentic
 only when `visor-session` (or visor-gateway `-backend` header overwrite)
 is the path that sets it. Typing `mcp-visor serve -client-id …` by hand
-is still spoofable.
+is still spoofable. The visor-only operator path is [deploy.md](deploy.md).
 
 ## Incident reconstruction
 
@@ -95,4 +95,5 @@ captured proof cannot be replayed from a lost durable log. Two in-flight
 copies of the same proof can still race while that nonce is live; `jti`
 consume allows only one. STS exchange still uses `actor_token`;
 token-endpoint DPoP only binds `cnf.jkt` for hops whose actor token is
-not a possessed key (JWT-SVID) and does not use a nonce.
+not a possessed key (JWT-SVID) and does not use a nonce. Those residuals
+are accepted (AI23). The visor-only operator path is [deploy.md](deploy.md).

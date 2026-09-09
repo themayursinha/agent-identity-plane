@@ -236,3 +236,20 @@ challenge, not resent empty. Restart forgets issued nonces, so a
 captured proof cannot be replayed from a lost `-dpop-replay` log. STS
 `POST /oauth/token` does not require a nonce. This is not a Production claim.
 
+## AI23 — visor-only operator path; residual PoP is explicit
+
+The supported `--client-id` path is `visor-session` or visor-gateway
+`-backend`. Hand-starting visor with a typed `--client-id` remains
+spoofable. Residual proof-of-possession is accepted and explicit:
+in-flight duplicate proofs can race while a nonce is live (`jti` allows
+one); STS exchange is still `actor_token`; token-endpoint DPoP has no
+nonce. `demo -strict` fetches a visor-gateway identity-only mapping
+(with nonce retry) and rejects extra identity flags. Operator steps are
+in `docs/deploy.md`. Advertised `serve` paths generate keys locally
+(`keys generate` / `keys jwks`); this repo does not ship private keys.
+`token mint` signs those keys and POSTs `/oauth/token` so visor-session
+is not left with an empty `$JWT`. Each localkeys verifying JWK carries
+`sub`; Attest requires it to match the actor token subject. SPIFFE
+JWT-SVID JWKS keys are issuer keys and do not use that binding. This
+version is operator-ready. It is not a Production claim.
+

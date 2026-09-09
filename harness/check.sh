@@ -45,7 +45,7 @@ record "go test ./... -count=1" go test ./... -count=1
 record "go test -race ./... -count=1" go test -race ./... -count=1
 record "sensitive-content" bash scripts/check-sensitive-content
 record "planning-not-tracked" bash -c 'if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then test "$(git ls-files ".planning" ".planning/**" | wc -l)" -eq 0; else true; fi'
-record "demo-transcript" bash -c 'go run ./cmd/agent-identity-plane demo -strict >/tmp/aip-demo.out && grep -q "scenario: allow" /tmp/aip-demo.out && grep -q "attack: unregistered_agent deny" /tmp/aip-demo.out'
+record "demo-transcript" bash -c 'go run ./cmd/agent-identity-plane demo -strict >/tmp/aip-demo.out && grep -q "scenario: allow" /tmp/aip-demo.out && grep -q "attack: unregistered_agent deny" /tmp/aip-demo.out && grep -q "visor-session: mapping" /tmp/aip-demo.out && grep -q "visor-session: typed_client_id deny" /tmp/aip-demo.out'
 
 echo >> "${MANIFEST}"
 if [ "${FAILURES}" -eq 0 ]; then

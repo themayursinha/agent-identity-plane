@@ -11,7 +11,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
 
-var version = "v0.9.0"
+var version = "v1.0.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -34,7 +34,7 @@ func main() {
 		err = cmdRegistryLint(os.Args[3:])
 	case "token":
 		if len(os.Args) < 3 {
-			err = fmt.Errorf("usage: agent-identity-plane token inspect|verify ...")
+			err = fmt.Errorf("usage: agent-identity-plane token inspect|verify|mint ...")
 			break
 		}
 		switch os.Args[2] {
@@ -42,17 +42,26 @@ func main() {
 			err = cmdTokenInspect(os.Args[3:])
 		case "verify":
 			err = cmdTokenVerify(os.Args[3:])
+		case "mint":
+			err = cmdTokenMint(os.Args[3:])
 		default:
 			err = fmt.Errorf("unknown token subcommand %s", os.Args[2])
 		}
 	case "trace":
 		err = cmdTrace(os.Args[2:])
 	case "keys":
-		if len(os.Args) < 3 || os.Args[2] != "generate" {
-			err = fmt.Errorf("usage: agent-identity-plane keys generate [-kid name] [-out file]")
+		if len(os.Args) < 3 {
+			err = fmt.Errorf("usage: agent-identity-plane keys generate|jwks ...")
 			break
 		}
-		err = cmdKeysGenerate(os.Args[3:])
+		switch os.Args[2] {
+		case "generate":
+			err = cmdKeysGenerate(os.Args[3:])
+		case "jwks":
+			err = cmdKeysJWKS(os.Args[3:])
+		default:
+			err = fmt.Errorf("unknown keys subcommand %s", os.Args[2])
+		}
 	case "demo":
 		err = cmdDemo(os.Args[2:])
 	case "version", "-version", "--version":
@@ -79,8 +88,10 @@ Commands:
   registry lint FILE    Strict-decode and validate a registry JSON file
   token inspect TOKEN   Decode a JWT without verifying the signature
   token verify ...      Verify a JWT against a JWKS and audience
+  token mint            Sign user/actor JWTs and POST /oauth/token
   trace                 Reconstruct a txn or minted jti from STS and visor JSONL logs
-  keys generate         Write a new Ed25519 key file
+  keys generate         Write a new Ed25519 key file (mode 0600; -sub binds workload keys)
+  keys jwks             Write a public JWKS from one or more 0600 key files
   demo                  Run the multi-hop scenario and attack cases
   version               Print the version
 
@@ -187,13 +198,27 @@ func tokenArg(args []string) (string, error) {
 func cmdKeysGenerate(args []string) error {
 	kid := "sts-1"
 	out := ""
+	sub := ""
+	usage := "usage: agent-identity-plane keys generate [-kid KID] [-sub URI] [-out FILE]"
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "-kid":
 			i++
+			if i >= len(args) {
+				return fmt.Errorf("%s", usage)
+			}
 			kid = args[i]
+		case "-sub":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("%s", usage)
+			}
+			sub = args[i]
 		case "-out":
 			i++
+			if i >= len(args) {
+				return fmt.Errorf("%s", usage)
+			}
 			out = args[i]
 		default:
 			return fmt.Errorf("unknown flag %s", args[i])
@@ -203,6 +228,7 @@ func cmdKeysGenerate(args []string) error {
 	if err != nil {
 		return err
 	}
+	kf.Sub = sub
 	b, err := json.MarshalIndent(kf, "", "  ")
 	if err != nil {
 		return err
@@ -212,5 +238,65 @@ func cmdKeysGenerate(args []string) error {
 		_, err = os.Stdout.Write(b)
 		return err
 	}
-	return os.WriteFile(out, b, 0o600)
+	return token.WriteSecretFile(out, b)
+}
+
+func cmdKeysJWKS(args []string) error {
+	var ins []string
+	out := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-in":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("usage: agent-identity-plane keys jwks -in FILE [-in FILE ...] [-out FILE]")
+			}
+			ins = append(ins, args[i])
+		case "-out":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("usage: agent-identity-plane keys jwks -in FILE [-in FILE ...] [-out FILE]")
+			}
+			out = args[i]
+		default:
+			return fmt.Errorf("unknown flag %s", args[i])
+		}
+	}
+	if len(ins) == 0 {
+		return fmt.Errorf("usage: agent-identity-plane keys jwks -in FILE [-in FILE ...] [-out FILE]")
+	}
+	var sets []token.JWKS
+	for _, path := range ins {
+		if err := token.CheckSecretFileMode(path); err != nil {
+			return err
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		_, keys, err := token.ParseSigningMaterial(raw)
+		if err != nil {
+			return err
+		}
+		for _, kf := range keys {
+			if kf == nil {
+				continue
+			}
+			sets = append(sets, kf.PublicJWKS())
+		}
+	}
+	ks := token.MergeJWKS(sets...)
+	if len(ks.Keys) == 0 {
+		return fmt.Errorf("keys jwks: no public keys")
+	}
+	b, err := json.MarshalIndent(ks, "", "  ")
+	if err != nil {
+		return err
+	}
+	b = append(b, '\n')
+	if out == "" {
+		_, err = os.Stdout.Write(b)
+		return err
+	}
+	return os.WriteFile(out, b, 0o644)
 }

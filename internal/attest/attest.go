@@ -28,7 +28,9 @@ type WorkloadAttestor interface {
 }
 
 // LocalKeys verifies Ed25519 JWTs whose sub is a registered workload id
-// and whose signature matches the corresponding public key.
+// and whose signature matches the corresponding public key. Each verifying
+// JWK must carry that workload's sub; an unbound or mismatched JWK is
+// unattested. SPIFFE JWT-SVID bundles do not use this binding.
 type LocalKeys struct {
 	Keys     token.JWKS
 	Audience string // typically the STS issuer
@@ -58,6 +60,9 @@ func (l *LocalKeys) Attest(ctx context.Context, actorToken string) (WorkloadIden
 		return WorkloadIdentity{}, ErrUnattested
 	}
 	if err := c.ValidateSubject(); err != nil {
+		return WorkloadIdentity{}, ErrUnattested
+	}
+	if strings.TrimSpace(jwk.Sub) == "" || jwk.Sub != c.Sub {
 		return WorkloadIdentity{}, ErrUnattested
 	}
 	if l.Audience != "" && !c.Aud.Contains(l.Audience) {

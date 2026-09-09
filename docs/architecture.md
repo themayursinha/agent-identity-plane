@@ -122,9 +122,10 @@ not denylisted.
 
 Minted STS tokens include `cnf.jkt`, the RFC 7638 thumbprint of a
 **workload-possessed** key. For localkeys actor tokens that is the
-verifying JWK. A JWT-SVID is signed by the SPIFFE issuer, so that
-issuer JWK is not `cnf.jkt`; the caller binds a possessed key with a
-token-endpoint DPoP proof (`ath` omitted) on `POST /oauth/token`.
+verifying JWK, which must carry that workload's `sub`. A JWT-SVID is
+signed by the SPIFFE issuer, so that issuer JWK is not `cnf.jkt`; the
+caller binds a possessed key with a token-endpoint DPoP proof (`ath`
+omitted) on `POST /oauth/token`.
 visor-gateway requires a `DPoP` proof JWT (`typ=dpop+jwt`) whose embedded public JWK
 thumbprint equals `cnf.jkt`. The proof must match this request's
 method (`htm`), reconstructed URI (`htu`: TLS→https else http, `Host`,
@@ -178,3 +179,14 @@ The tripper retries only when the body is replayable (`GetBody`).
 Restart forgets issued nonces, so a captured proof cannot be replayed
 from a lost `-dpop-replay` log. STS `POST /oauth/token` does not require
 a nonce. This is not a Production identity plane.
+
+## Operator-ready visor-only path (v1.0)
+
+`demo -strict` mints, denies, traces, then POSTs the gateway token to
+an identity-only visor-gateway (DPoP nonce retry) and builds visor argv
+from that mapping only. Extra `-client-id` is rejected. The operator
+copy-paste is [deploy.md](deploy.md). Residual proof-of-possession is
+accepted: in-flight duplicate proofs can race while a nonce is live;
+STS exchange is still `actor_token`; token-endpoint DPoP has no nonce;
+hand-starting visor remains spoofable. This is not a Production
+identity plane.
