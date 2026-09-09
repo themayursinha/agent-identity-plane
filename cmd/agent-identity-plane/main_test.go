@@ -34,6 +34,12 @@ func TestCLIDemoAndLint(t *testing.T) {
 	if !strings.Contains(s, "attack: unregistered_agent deny") {
 		t.Fatal(s)
 	}
+	if !strings.Contains(s, "visor-session: mapping") {
+		t.Fatal(s)
+	}
+	if !strings.Contains(s, "visor-session: typed_client_id deny") {
+		t.Fatal(s)
+	}
 
 	root, err := os.Getwd()
 	if err != nil {
@@ -55,7 +61,7 @@ func TestCLIDemoAndLint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "v0.9.0") {
+	if !strings.Contains(string(out), "v1.0.0") {
 		t.Fatalf("version %s", out)
 	}
 

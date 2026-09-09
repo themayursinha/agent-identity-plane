@@ -11,7 +11,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
 
-var version = "v0.9.0"
+var version = "v1.0.0"
 
 func main() {
 	if len(os.Args) < 2 {

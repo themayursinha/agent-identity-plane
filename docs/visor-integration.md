@@ -53,6 +53,7 @@ identity policy meaningful, and `visor-session` is the supported path
 that starts visor with that mapping. Only a verified chain that is not
 denylisted and that presents a valid DPoP proof produces the
 `--client-id` / `--session-id` visor-session passes to visor.
+The operator copy-paste is [deploy.md](deploy.md).
 
 ## Mapping example
 

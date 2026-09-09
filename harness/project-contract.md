@@ -71,7 +71,9 @@ or loopback `http`; no query or fragment). Redirects are not followed. `-dpop-ke
 file. Hand-starting visor with a typed `--client-id` is still
 spoofable. On Unix the process is replaced by visor; `AIP_ACCESS_TOKEN`
 is stripped from visor's environment (case-insensitive). Exec is
-Unix-only. This is not a Production claim.
+Unix-only. Residual proof-of-possession is explicit (AI23): in-flight
+DPoP races, STS `actor_token`, and no token-endpoint nonce. Operator
+steps are in `docs/deploy.md`. This is not a Production claim.
 
 `trace` reconstructs hops from required `-audit-log` JSONL. `-audit`
 is always chain-verified; only `-visor` may be generic JSONL. Opening

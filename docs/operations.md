@@ -1,7 +1,8 @@
-# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist, v0.6 DPoP, v0.7 trace, v0.8 visor-session, v0.9 DPoP nonce)
+# Operations (v1.0 operator-ready visor-only path)
 
-This is an operable single-node STS, not a production identity plane.
-Loopback binds and fail-closed minting still apply. Incident procedures
+This is an operable single-node identity plane, not a Production claim.
+Loopback binds and fail-closed minting still apply. The visor-only
+operator path is [deploy.md](deploy.md). Incident procedures
 (key compromise, `trace -jti` / `-txn`) are in [runbooks.md](runbooks.md).
 
 ## TLS and reverse proxy

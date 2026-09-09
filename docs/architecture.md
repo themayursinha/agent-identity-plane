@@ -178,3 +178,14 @@ The tripper retries only when the body is replayable (`GetBody`).
 Restart forgets issued nonces, so a captured proof cannot be replayed
 from a lost `-dpop-replay` log. STS `POST /oauth/token` does not require
 a nonce. This is not a Production identity plane.
+
+## Operator-ready visor-only path (v1.0)
+
+`demo -strict` mints, denies, traces, then POSTs the gateway token to
+an identity-only visor-gateway (DPoP nonce retry) and builds visor argv
+from that mapping only. Extra `-client-id` is rejected. The operator
+copy-paste is [deploy.md](deploy.md). Residual proof-of-possession is
+accepted: in-flight duplicate proofs can race while a nonce is live;
+STS exchange is still `actor_token`; token-endpoint DPoP has no nonce;
+hand-starting visor remains spoofable. This is not a Production
+identity plane.

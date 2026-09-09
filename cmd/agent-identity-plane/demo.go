@@ -1,19 +1,24 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/gateway"
 	"github.com/themayursinha/agent-identity-plane/internal/scenario"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
 	"github.com/themayursinha/agent-identity-plane/internal/token"
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 	"github.com/themayursinha/agent-identity-plane/internal/visoradapter"
+	"github.com/themayursinha/agent-identity-plane/internal/visorsession"
 )
 
 func cmdDemo(args []string) error {
@@ -110,6 +115,44 @@ func cmdDemo(args []string) error {
 		} else {
 			fmt.Print(audit.FormatTrace(recs))
 			report(true, fmt.Sprintf("trace: reconstructed hops=%d", len(recs)))
+		}
+		gwLog, err := audit.NewLogger(filepath.Join(dir, "gateway.jsonl"))
+		if err != nil {
+			report(false, "visor-session: mapping FAIL "+err.Error())
+		} else {
+			defer gwLog.Close()
+			cfg := &gateway.Config{
+				Bind:         "127.0.0.1:0",
+				Audience:     scenario.Gateway,
+				Verifier:     w.Verifier,
+				Audit:        gwLog,
+				IdentityOnly: true,
+				ProofReplay:  sts.NewReplayCache(func() time.Time { return w.Now }),
+			}
+			ts := httptest.NewServer(cfg.Handler())
+			defer ts.Close()
+			m, err := visorsession.Fetch(context.Background(), visorsession.Request{
+				GatewayURL: ts.URL + "/session",
+				Token:      gwTok,
+				ProofKey:   w.WL[scenario.WLInvest],
+				Now:        func() time.Time { return w.Now },
+			})
+			if err != nil {
+				report(false, "visor-session: mapping FAIL "+err.Error())
+			} else if err := m.Complete(); err != nil {
+				report(false, "visor-session: mapping FAIL "+err.Error())
+			} else {
+				_, args, err := visorsession.Command("mcp-visor", m, []string{"-policy", "policy.yaml"})
+				if err != nil {
+					report(false, "visor-session: mapping FAIL "+err.Error())
+				} else {
+					report(true, fmt.Sprintf("visor-session: mapping client_id=%s session_id=%s argv=%s",
+						m.ClientID, m.SessionID, visorsession.FormatArgv("mcp-visor", args)))
+				}
+				_, _, err = visorsession.Command("mcp-visor", m, []string{"-client-id", "spoofed"})
+				report(errors.Is(err, visorsession.ErrIdentityArgs),
+					fmt.Sprintf("visor-session: typed_client_id deny err=%v", err))
+			}
 		}
 	}
 

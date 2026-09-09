@@ -1,0 +1,21 @@
+{
+  "task_id": "T-AIP-009-operator-ready",
+  "invariant_ids": ["AI21", "AI22", "AI23"],
+  "security_sensitive": true,
+  "security_problem": "An operator can still type mcp-visor serve --client-id by hand. Residual PoP (in-flight DPoP race, STS actor_token, no token-endpoint nonce) must stay explicit so a v1.0 version bump is not a Production claim.",
+  "required_behavior": "The supported --client-id path is visor-session or visor-gateway -backend. demo -strict fetches an identity-only visor-gateway mapping (DPoP nonce retry) and rejects extra visor identity flags. Residual PoP is documented as accepted. Version is v1.0.0. This is not a Production claim.",
+  "failure_behavior": "Fail closed: typed --client-id / --session-id extra args are a process error and do not exec visor. Missing nonce is 401 use_dpop_nonce. Unspecified binds remain rejected.",
+  "max_attempts": 3,
+  "required_commands": [
+    {
+      "name": "target_test",
+      "expect": "pass",
+      "argv": ["go", "test", "./cmd/agent-identity-plane/...", "./internal/visorsession/...", "./internal/gateway/...", "-count", "1"]
+    },
+    {
+      "name": "harness",
+      "expect": "pass",
+      "argv": ["harness/check.sh"]
+    }
+  ]
+}
