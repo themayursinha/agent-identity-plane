@@ -103,6 +103,7 @@ agent-identity-plane visor-gateway \
 | AI16 | visor-gateway forwards only a verified actor chain |
 | AI17 | Workload JWT-SVID JWKS is fetched over https (loopback http) |
 | AI18 | Denylisted agents, workloads, and principals cannot mint or pass the PEP |
+| AI19 | visor-gateway requires a DPoP proof bound to minted `cnf.jkt` |
 | AI20 | `trace` verifies the audit hash chain and reconstructs by `txn` or `jti` |
 
 ## Architecture

@@ -48,6 +48,9 @@ Keyring (rotate without dropping in-flight tokens):
    Reloading a published kid with different public-key bytes is rejected.
 3. Retire: wait at least mint TTL plus clock skew (`KeyRetirementWait`,
    default 150s), then remove the old key and `kill -HUP`.
+   Compromise recovery is not this wait: after the replacement kid is
+   active, remove the burned kid immediately even if in-flight tokens
+   under it fail (see [runbooks.md](runbooks.md)).
 
 ## Registry and key reload
 

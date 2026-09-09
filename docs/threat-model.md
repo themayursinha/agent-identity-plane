@@ -34,6 +34,7 @@ This document is an engineering threat model, not a compliance claim.
 | Stolen minted JWT presented at visor-gateway | DPoP bound to `cnf.jkt` of the actor-token key (AI19) | `missing_dpop` / `invalid_dpop_proof` / `replayed_dpop` / `missing_cnf` |
 | Unspecified bind | `ValidateBind` (AI11) | process error |
 | Cleartext or empty live JWT-SVID JWKS | URL policy + empty-JWKS fail-closed (AI17) | process error / `/readyz` 503 |
+| Subverted but still-registered agent | Exact-ID denylist at mint and visor-gateway (AI18) | `agent_denied` / `workload_denied` / `principal_denied` |
 | Tampered STS audit JSONL | Hash chain verified on open and on `trace` (AI20) | process / CLI error |
 
 ## Out of scope / honest limits
@@ -49,4 +50,4 @@ This document is an engineering threat model, not a compliance claim.
 
 ## Residual risk
 
-A process that holds a valid workload key and a valid inbound subject token can mint the next hop until TTL/depth/scope **or the denylist** stop it. Detecting a *subverted but correctly attested* agent still needs that operator-supplied denylist (or visor policy). This repo does not invent a host sandbox. Theft of a minted JWT without the workload private key is stopped at visor-gateway by DPoP. Replay of a DPoP proof is stopped while `-dpop-replay` retains the proof `jti`. Without a nonce, an intercepted proof can be replayed only until that cache expires (`iat + ClockSkew`) or the process loses the log. Operators reconstruct hops with `trace` after verifying the audit hash chain; key-compromise steps are in [runbooks.md](runbooks.md).
+A process that holds a valid workload key and a valid inbound subject token can mint the next hop until TTL/depth/scope **or the denylist** stop it. Detecting a *subverted but correctly attested* agent still needs that operator-supplied denylist (or visor policy). This repo does not invent a host sandbox. Theft of a minted JWT without the workload private key is stopped at visor-gateway by DPoP. A DPoP proof `jti` already in `-dpop-replay` is rejected. Without a nonce, an intercepted proof can still win a race before the first consume, or be replayed if the durable log is lost before `iat + ClockSkew`. Operators reconstruct hops with `trace` after verifying the audit hash chain; key-compromise steps are in [runbooks.md](runbooks.md).

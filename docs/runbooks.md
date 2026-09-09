@@ -27,22 +27,25 @@ equals that `txn`. Gateway allow/deny records are in the gateway
 
 ## Key compromise (STS signing key)
 
+Compromise recovery is not routine rotation. visor-gateway re-fetches
+JWKS on every verify, so a burned kid that remains published still
+lets an attacker forge tokens. Drop that kid as soon as the
+replacement is active, even though in-flight tokens under the burned
+kid will fail verify.
+
 1. Treat the key as burned. Do not keep minting with it.
 2. Preload a new kid (same file, `active_kid` still the old kid), `kill -HUP`.
    Wait until visor-gateway has fetched the new JWKS (it re-reads on
    each verify).
 3. Activate the new kid (`active_kid` already in the previous JWKS),
    `kill -HUP`.
-4. Wait at least mint TTL plus clock skew (`KeyRetirementWait`, default
-   150s) so in-flight tokens under the old kid expire.
-5. Remove the old private key from the keyring, `kill -HUP`.
-6. Trace recent mints (`trace -txn` / `-jti`) if you need the actor
+4. Remove the burned kid from the keyring immediately, `kill -HUP`.
+   Do not wait `KeyRetirementWait`; that wait is for planned rotation
+   only (see [operations.md](operations.md)).
+5. Trace recent mints (`trace -txn` / `-jti`) if you need the actor
    chains issued under the burned key.
-7. If a workload or agent was the cause, denylist it (below) so the PEP
+6. If a workload or agent was the cause, denylist it (below) so the PEP
    stops in-flight hops without waiting for TTL.
-
-See [operations.md](operations.md) for the preload/activate/retire
-contract.
 
 ## Key compromise (workload key)
 
@@ -61,8 +64,9 @@ theft of a minted JWT *without* that key.
 ## Residual proof-of-possession
 
 visor-gateway requires RFC 9449 DPoP bound to minted `cnf.jkt`. There
-is no DPoP nonce. An intercepted proof can be replayed until
-`-dpop-replay` still holds that proof `jti` (`iat + ClockSkew`) or the
-process loses the log. STS exchange still uses `actor_token`;
+is no DPoP nonce. A proof `jti` already consumed in `-dpop-replay` is
+rejected. An intercepted proof can still win a race before that first
+consume, or be replayed if the durable log is lost before
+`iat + ClockSkew`. STS exchange still uses `actor_token`;
 token-endpoint DPoP only binds `cnf.jkt` for hops whose actor token is
 not a possessed key (JWT-SVID).
