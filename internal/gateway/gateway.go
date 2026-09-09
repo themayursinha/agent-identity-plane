@@ -147,12 +147,17 @@ func (c *Config) handlePEP(w http.ResponseWriter, r *http.Request) {
 	}
 	chain, err := c.Verifier.Verify(raw, c.Audience)
 	if err != nil {
-		c.writeDeny(w, http.StatusUnauthorized, ReasonInvalidToken, err.Error(), nil)
+		var m *visoradapter.Mapping
+		if chain.Txn != "" || chain.JTI != "" {
+			mapped := visoradapter.FromChain(chain, visoradapter.Options{ShortName: c.ShortName})
+			m = &mapped
+		}
+		c.writeDeny(w, http.StatusUnauthorized, ReasonInvalidToken, err.Error(), m)
 		return
 	}
 	m := visoradapter.FromChain(chain, visoradapter.Options{ShortName: c.ShortName})
 	if err := m.Complete(); err != nil {
-		c.writeDeny(w, http.StatusUnauthorized, ReasonIncomplete, err.Error(), nil)
+		c.writeDeny(w, http.StatusUnauthorized, ReasonIncomplete, err.Error(), &m)
 		return
 	}
 	if reason, err := c.denyIdentity(m); err != nil {
@@ -276,6 +281,7 @@ func (c *Config) writeDeny(w http.ResponseWriter, status int, reason, desc strin
 	}
 	if m != nil {
 		ev.Txn = m.SessionID
+		ev.JTI = m.JTI
 		ev.AgentID = m.ActingAgent
 		ev.Principal = m.Principal
 		ev.Hops = m.Hops

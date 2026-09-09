@@ -135,3 +135,16 @@ a consume map. Unprefixed proof jtis from an earlier log are still
 treated as occupied until they expire. Missing `cnf`, missing or
 invalid DPoP, or a replayed proof is 401 with no backend. This is not
 a DPoP nonce deployment and not a Production identity plane.
+
+## Incident reconstruction (v0.7)
+
+STS and visor-gateway audit JSONL is hash-linked. `trace -audit` is
+always that Event stream: opening the log and tracing it verify
+`prev_hash` / `chain_index` / payload `hash` from genesis; any
+non-audit line is a break. Only `-visor` may be generic JSONL.
+`trace -txn` reconstructs a transaction. `trace -jti` maps jti→txn
+from verified records and returns that transaction's hops. Hashed
+Event strings are valid UTF-8 and length-bounded. The chain is not a MAC (tail
+truncation, empty file, and a fully recomputed log are not detected). Key-compromise steps are in [runbooks.md](runbooks.md),
+including regenerating a visor-gateway `-jwks` file copy. This is not
+Production (no live visor-only `--client-id` path; no DPoP nonce).

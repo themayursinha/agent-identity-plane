@@ -12,11 +12,12 @@ func TestFromChain(t *testing.T) {
 		Actor:     "spiffe://example.test/agent/investigation",
 		Hops:      []string{"user1", "spiffe://example.test/agent/oncall", "spiffe://example.test/agent/investigation"},
 		Txn:       "txn-1",
+		JTI:       "jti-1",
 		Scope:     "mcp:github:pr",
 		Depth:     2,
 	}
 	m := FromChain(c, Options{})
-	if m.ClientID != c.Actor || m.SessionID != "txn-1" {
+	if m.ClientID != c.Actor || m.SessionID != "txn-1" || m.JTI != "jti-1" {
 		t.Fatalf("%+v", m)
 	}
 	if err := m.Complete(); err != nil {

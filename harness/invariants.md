@@ -47,8 +47,11 @@ current actor wrapping the incoming `act`. Reason code: `chain_integrity`.
 Every mint or deny writes a hash-linked JSONL record with a stable
 `reason_code` before the HTTP response is sent, including HTTP-layer
 denials that never enter `Exchange` (`rate_limited`, malformed form).
-The audit log path must not alias the replay log. Recovered audit
-records must be complete (hash-chain fields present). Allows `Sync()`
+If that write fails, STS does not return a minted token
+(`audit_unavailable`) and visor-gateway does not forward. The audit
+log path must not alias the replay log. Recovered audit
+records must be complete (hash-chain fields present). Opening that
+log verifies the hash chain (AI20). Allows `Sync()`
 the file.
 
 ## AI9 — Deterministic receipts
@@ -169,4 +172,30 @@ in the log remain occupied until expiry. The DPoP header JWK must be a public ke
 backend forward. `-dpop-replay` must not alias other exclusive
 identity files. This is not a DPoP nonce deployment and not a
 Production claim.
+
+## AI20 — Incident reconstruction verifies the audit hash chain
+
+`trace` reconstructs hops from STS/gateway audit JSONL and optional
+visor JSONL. `-audit` is always an Event stream: opening that log, and
+tracing it, verifies `prev_hash`, `chain_index`, and payload `hash`
+from genesis; any non-audit line is a break. Only `-visor` may be
+generic JSONL. Operators look up a stolen token by minted `jti`
+(`trace -jti`) or by `txn` (`trace -txn`); jti→txn is taken from
+verified records, and a jti query returns that transaction, or the
+verified records that carry the jti when the subject had no txn. Once a
+subject JWT verifies against STS or IdP keys, denials carry that
+`txn`/`jti` even when the reason code is actor, registry, or denylist.
+`FormatTrace` prints only printable runes so unverified visor fields
+cannot inject extra hops. Hashed Event
+strings are valid UTF-8 and length-bounded (invalid or oversized
+request fields are replaced or truncated) so Append and reopen
+compute the same payload hash inside the 1MiB scanner cap. A record
+that is not already in that canonical form is a chain break. The hash
+chain is not a MAC: tail truncation, an empty file, and a fully
+recomputed log are not detected. Planned signing-key rotation still waits
+`KeyRetirementWait`; compromise recovery removes the burned kid as
+soon as the replacement is active. A visor-gateway `-jwks` file copy
+must be regenerated; `-jwks-url` re-fetches. Preload still mints on
+the burned `active_kid` until activate. This is the operator runbook
+surface for key compromise, not a Production claim.
 

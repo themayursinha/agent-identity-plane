@@ -1,0 +1,21 @@
+{
+  "task_id": "T-AIP-006-incident-trace",
+  "invariant_ids": ["AI8", "AI9", "AI20"],
+  "security_sensitive": true,
+  "security_problem": "A stolen minted JWT or a burned STS/workload key is an incident. If trace skips hash-chain verification, an attacker who tampers with audit JSONL can hide or rewrite hops. If trace only accepts txn, an operator holding the compact JWT cannot find the actor chain from its jti.",
+  "required_behavior": "Opening an STS or visor-gateway audit JSONL verifies prev_hash, chain_index, and payload hash from genesis. trace -audit is always that Event stream; only -visor may be generic JSONL. trace -txn reconstructs that transaction. trace -jti maps jti to txn from verified records and returns that transaction. A broken chain fails closed. Hashed Event strings are valid UTF-8 and length-bounded so Append and reopen agree inside the 1MiB scanner. The hash chain is not a MAC. Key-compromise procedures (including regenerating a -jwks file copy) are documented in docs/runbooks.md. This is not Production.",
+  "failure_behavior": "Fail closed: incomplete audit records, hash mismatch, prev_hash or chain_index breaks, a generic JSONL line on -audit, and missing txn/jti produce a process or CLI error and no reconstructed hops from a tampered STS log.",
+  "max_attempts": 3,
+  "required_commands": [
+    {
+      "name": "target_test",
+      "expect": "pass",
+      "argv": ["go", "test", "./internal/audit/...", "./cmd/agent-identity-plane/...", "-count", "1"]
+    },
+    {
+      "name": "harness",
+      "expect": "pass",
+      "argv": ["harness/check.sh"]
+    }
+  ]
+}

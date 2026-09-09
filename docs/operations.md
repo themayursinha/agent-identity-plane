@@ -1,7 +1,8 @@
-# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist, v0.6 DPoP)
+# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist, v0.6 DPoP, v0.7 trace)
 
 This is an operable single-node STS, not a production identity plane.
-Loopback binds and fail-closed minting still apply.
+Loopback binds and fail-closed minting still apply. Incident procedures
+(key compromise, `trace -jti` / `-txn`) are in [runbooks.md](runbooks.md).
 
 ## TLS and reverse proxy
 
@@ -41,12 +42,16 @@ Keyring (rotate without dropping in-flight tokens):
 
 1. Preload: add the new key, keep `active_kid` on the current kid, `kill -HUP`.
    `/jwks.json` now publishes both. Wait until verifiers refresh JWKS
-   (visor-gateway re-reads `-jwks` / `-jwks-url` on each verify).
+   (visor-gateway re-reads `-jwks-url` on each verify; a `-jwks` file
+   is re-read from disk, so replace that copy when the ring changes).
 2. Activate: set `active_kid` to the already-published new kid, `kill -HUP`.
    Activating a kid that was not in the previous JWKS is rejected.
    Reloading a published kid with different public-key bytes is rejected.
 3. Retire: wait at least mint TTL plus clock skew (`KeyRetirementWait`,
    default 150s), then remove the old key and `kill -HUP`.
+   Compromise recovery is not this wait: after the replacement kid is
+   active, remove the burned kid immediately even if in-flight tokens
+   under it fail (see [runbooks.md](runbooks.md)).
 
 ## Registry and key reload
 
@@ -68,6 +73,18 @@ hard link). Replay records require `jti` and `until`; foreign or
 incomplete JSONL fails closed at open. Retry a hop from a first-hop
 IdP token, not by replaying an STS subject token. Replay is not an
 agent denylist; see below.
+
+## Trace
+
+`agent-identity-plane trace -txn ID -audit sts-audit.jsonl` reconstructs
+hops. `trace -jti JTI` maps jti→txn from verified `-audit` records
+only. `-audit` is always chain-verified; only `-visor` may be generic
+JSONL. The hash chain is not a MAC: tail truncation, an empty file,
+and a fully recomputed log are not detected. Hashed Event strings are
+valid UTF-8 and length-bounded so recover can reopen the file. A
+pre-v0.7 `-audit-log` that contains invalid UTF-8 or oversized deny
+fields will fail open-and-trace; copy it aside and start a new file.
+See [runbooks.md](runbooks.md).
 
 ## Endpoints
 

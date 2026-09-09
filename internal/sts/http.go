@@ -15,6 +15,8 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/dpop"
 )
 
+const maxTokenBody = 1 << 20
+
 // ValidateBind rejects unspecified addresses (0.0.0.0, ::, empty host).
 func ValidateBind(addr string) error {
 	host, port, err := net.SplitHostPort(addr)
@@ -96,6 +98,7 @@ func (c *Config) Handler() http.Handler {
 }
 
 func (c *Config) handleToken(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxTokenBody)
 	c.live.RLock()
 	lim := c.limiter
 	c.live.RUnlock()
@@ -144,6 +147,9 @@ func (c *Config) handleToken(w http.ResponseWriter, r *http.Request) {
 		if res.ReasonCode == ReasonReplayedToken {
 			status = http.StatusBadRequest
 		}
+		if res.ReasonCode == ReasonAuditFailed {
+			status = http.StatusServiceUnavailable
+		}
 		writeOAuthErrorCode(w, status, res.Error, res.ErrorDesc, res.ReasonCode)
 		return
 	}
@@ -158,15 +164,19 @@ func (c *Config) handleToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Config) writeHTTPDeny(w http.ResponseWriter, status int, oauthErr, desc, reason string) {
+	if c.Audit != nil {
+		if err := c.Audit.Append(audit.Event{
+			EventType:  "token_denied",
+			ReasonCode: reason,
+		}); err != nil {
+			c.Metrics.Denied.Add(1)
+			http.Error(w, "audit unavailable\n", http.StatusServiceUnavailable)
+			return
+		}
+	}
 	c.Metrics.Denied.Add(1)
 	if reason == ReasonRateLimited {
 		c.Metrics.RateLimited.Add(1)
-	}
-	if c.Audit != nil {
-		_ = c.Audit.Append(audit.Event{
-			EventType:  "token_denied",
-			ReasonCode: reason,
-		})
 	}
 	writeOAuthErrorCode(w, status, oauthErr, desc, reason)
 }

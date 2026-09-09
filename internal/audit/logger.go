@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/themayursinha/agent-identity-plane/internal/jsonutil"
 )
@@ -18,7 +20,18 @@ import (
 // receipt convention.
 const GenesisPrevHash = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e490166ae4ba7b5b37bcd8deac"
 
-var ErrUnhealthy = errors.New("audit: sink unhealthy")
+var (
+	ErrUnhealthy      = errors.New("audit: sink unhealthy")
+	ErrChainBroken    = errors.New("audit: hash chain broken")
+	ErrRecordTooLarge = errors.New("audit: record exceeds scanner limit")
+)
+
+const (
+	// MaxLineBytes is the Scanner token cap used by recover and trace.
+	MaxLineBytes   = 1024 * 1024
+	maxEventString = 4096
+	maxEventHops   = 32
+)
 
 // Event is one STS decision record.
 type Event struct {
@@ -83,25 +96,27 @@ func (l *Logger) recover() error {
 		return err
 	}
 	sc := bufio.NewScanner(l.file)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	sc.Buffer(make([]byte, 0, 64*1024), MaxLineBytes)
+	prev := GenesisPrevHash
+	var index uint64
 	var last Event
-	var n uint64
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(line) == 0 {
 			continue
 		}
-		e, err := decodeAuditRecord(line)
+		e, err := decodeAndVerify(line, prev, index+1)
 		if err != nil {
 			return err
 		}
 		last = e
-		n++
+		prev = e.Hash
+		index = e.ChainIndex
 	}
 	if err := sc.Err(); err != nil {
 		return err
 	}
-	if n == 0 {
+	if index == 0 {
 		return nil
 	}
 	l.prevHash = last.Hash
@@ -129,6 +144,115 @@ func decodeAuditRecord(raw []byte) (Event, error) {
 	return e, nil
 }
 
+func decodeAndVerify(raw []byte, prev string, wantIndex uint64) (Event, error) {
+	e, err := decodeAuditRecord(raw)
+	if err != nil {
+		return Event{}, err
+	}
+	if err := verifyEvent(e, prev, wantIndex); err != nil {
+		return Event{}, err
+	}
+	return e, nil
+}
+
+func verifyEvent(e Event, prev string, wantIndex uint64) error {
+	if e.PrevHash != prev {
+		return fmt.Errorf("%w: prev_hash at index %d", ErrChainBroken, e.ChainIndex)
+	}
+	if e.ChainIndex != wantIndex {
+		return fmt.Errorf("%w: chain_index %d want %d", ErrChainBroken, e.ChainIndex, wantIndex)
+	}
+	canon := e
+	if len(e.Hops) > 0 {
+		canon.Hops = append([]string(nil), e.Hops...)
+	}
+	canonicalizeEvent(&canon)
+	if !eventCanonEqual(e, canon) {
+		return fmt.Errorf("%w: non-canonical payload at index %d", ErrChainBroken, e.ChainIndex)
+	}
+	want, err := payloadHash(e)
+	if err != nil {
+		return err
+	}
+	if e.Hash != want {
+		return fmt.Errorf("%w: hash mismatch at index %d", ErrChainBroken, e.ChainIndex)
+	}
+	return nil
+}
+
+func eventCanonEqual(a, b Event) bool {
+	if a.Timestamp != b.Timestamp || a.EventType != b.EventType || a.ReasonCode != b.ReasonCode ||
+		a.Txn != b.Txn || a.JTI != b.JTI || a.AgentID != b.AgentID || a.Workload != b.Workload ||
+		a.Principal != b.Principal || a.Audience != b.Audience || a.Scope != b.Scope ||
+		a.Hash != b.Hash || a.PrevHash != b.PrevHash {
+		return false
+	}
+	if len(a.Hops) != len(b.Hops) {
+		return false
+	}
+	for i := range a.Hops {
+		if a.Hops[i] != b.Hops[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func payloadHash(e Event) (string, error) {
+	canonicalizeEvent(&e)
+	e.Hash = ""
+	payload, err := json.Marshal(e)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(payload)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+// canonicalizeEvent makes Event strings valid UTF-8 and length-bounded
+// so Append and verify hash the same json.Marshal bytes, and so a
+// written line stays inside MaxLineBytes. encoding/json is not
+// round-trip stable for invalid UTF-8; unbounded request fields would
+// otherwise fail recover/trace as token-too-long.
+func canonicalizeEvent(e *Event) {
+	e.Timestamp = boundEventString(e.Timestamp)
+	e.EventType = boundEventString(e.EventType)
+	e.ReasonCode = boundEventString(e.ReasonCode)
+	e.Txn = boundEventString(e.Txn)
+	e.JTI = boundEventString(e.JTI)
+	e.AgentID = boundEventString(e.AgentID)
+	e.Workload = boundEventString(e.Workload)
+	e.Principal = boundEventString(e.Principal)
+	e.Audience = boundEventString(e.Audience)
+	e.Scope = boundEventString(e.Scope)
+	e.Hash = boundEventString(e.Hash)
+	e.PrevHash = boundEventString(e.PrevHash)
+	if len(e.Hops) > maxEventHops {
+		e.Hops = e.Hops[:maxEventHops]
+	}
+	if len(e.Hops) > 0 {
+		hops := make([]string, len(e.Hops))
+		for i, h := range e.Hops {
+			hops[i] = boundEventString(h)
+		}
+		e.Hops = hops
+	}
+}
+
+func boundEventString(s string) string {
+	if !utf8.ValidString(s) {
+		s = strings.ToValidUTF8(s, "\uFFFD")
+	}
+	if len(s) <= maxEventString {
+		return s
+	}
+	s = s[:maxEventString]
+	for len(s) > 0 && !utf8.ValidString(s) {
+		s = s[:len(s)-1]
+	}
+	return s
+}
+
 // Append writes e, filling hash-chain fields, and Syncs the file.
 func (l *Logger) Append(e Event) error {
 	l.mu.Lock()
@@ -136,23 +260,25 @@ func (l *Logger) Append(e Event) error {
 	if l.poisoned || l.file == nil {
 		return ErrUnhealthy
 	}
+	canonicalizeEvent(&e)
 	if e.Timestamp == "" {
 		e.Timestamp = l.now().Format(time.RFC3339Nano)
 	}
 	e.PrevHash = l.prevHash
 	e.ChainIndex = l.chainIndex + 1
-	e.Hash = ""
-	payload, err := json.Marshal(e)
+	h, err := payloadHash(e)
 	if err != nil {
 		l.poisoned = true
 		return err
 	}
-	sum := sha256.Sum256(payload)
-	e.Hash = "sha256:" + hex.EncodeToString(sum[:])
+	e.Hash = h
 	line, err := json.Marshal(e)
 	if err != nil {
 		l.poisoned = true
 		return err
+	}
+	if len(line)+1 > MaxLineBytes {
+		return ErrRecordTooLarge
 	}
 	line = append(line, '\n')
 	if _, err := l.file.Write(line); err != nil {

@@ -44,6 +44,7 @@ const (
 	ReasonPrincipalDenied        = denylist.ReasonPrincipalDenied
 	ReasonMissingCNF             = "missing_cnf"
 	ReasonInvalidDPoP            = "invalid_dpop_proof"
+	ReasonAuditFailed            = "audit_unavailable"
 )
 
 var ErrUnspecifiedBind = errors.New("sts: listen address must not be unspecified")
@@ -185,7 +186,10 @@ type ExchangeResult struct {
 
 type outcome struct {
 	ExchangeResult
-	workload string
+	workload   string
+	subjectTxn string
+	subjectJTI string
+	subjectSub string
 }
 
 func deny(code, oauthError, desc string) outcome {
@@ -194,6 +198,13 @@ func deny(code, oauthError, desc string) outcome {
 		Error:      oauthError,
 		ErrorDesc:  desc,
 	}}
+}
+
+func (o outcome) withSubject(sub token.Claims) outcome {
+	o.subjectTxn = sub.Txn
+	o.subjectJTI = sub.Jti
+	o.subjectSub = sub.Sub
+	return o
 }
 
 // Exchange performs one token exchange and writes an audit record first.
@@ -207,7 +218,6 @@ func (c *Config) Exchange(ctx context.Context, req ExchangeRequest) ExchangeResu
 			Workload:   out.workload,
 		}
 		if out.ReasonCode == ReasonOK {
-			c.Metrics.Minted.Add(1)
 			ev.EventType = "token_minted"
 			ev.Txn = out.Issued.Txn
 			ev.JTI = out.Issued.Jti
@@ -216,14 +226,27 @@ func (c *Config) Exchange(ctx context.Context, req ExchangeRequest) ExchangeResu
 			ev.Hops = append([]string{out.Issued.Sub}, out.Issued.ActorSubs()...)
 			ev.Scope = out.Issued.Scope
 		} else {
+			ev.EventType = "token_denied"
+			ev.Scope = req.Scope
+			ev.Txn = out.subjectTxn
+			ev.JTI = out.subjectJTI
+			ev.Principal = out.subjectSub
+		}
+		if err := c.Audit.Append(ev); err != nil {
+			return ExchangeResult{
+				ReasonCode: ReasonAuditFailed,
+				Error:      "server_error",
+				ErrorDesc:  "audit unavailable",
+			}
+		}
+		if out.ReasonCode == ReasonOK {
+			c.Metrics.Minted.Add(1)
+		} else {
 			c.Metrics.Denied.Add(1)
 			if out.ReasonCode == ReasonReplayedToken {
 				c.Metrics.Replays.Add(1)
 			}
-			ev.EventType = "token_denied"
-			ev.Scope = req.Scope
 		}
-		_ = c.Audit.Append(ev)
 	}
 	return out.ExchangeResult
 }
@@ -246,59 +269,69 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 		return deny(ReasonInvalidRequest, "invalid_request", "requested_token_type")
 	}
 
+	sub, fromSTS, subErr := c.verifySubject(req.SubjectToken, snap)
+	with := func(o outcome) outcome {
+		if subErr == nil {
+			return o.withSubject(sub)
+		}
+		return o
+	}
+
 	wl, err := snap.Attestor.Attest(ctx, req.ActorToken)
 	if err != nil {
-		return deny(ReasonInvalidActorToken, "invalid_request", err.Error())
+		return with(deny(ReasonInvalidActorToken, "invalid_request", err.Error()))
 	}
 
 	now := c.now()
 	agent, err := snap.Registry.Authorize(req.AgentID, wl.ID, req.Audience, now)
 	if err != nil {
-		return deny(mapRegistryErr(err), "access_denied", err.Error())
+		return with(deny(mapRegistryErr(err), "access_denied", err.Error()))
 	}
 	if snap.Denylist.HasAgent(req.AgentID) {
-		return deny(ReasonAgentDenied, "access_denied", "agent is denied")
+		return with(deny(ReasonAgentDenied, "access_denied", "agent is denied"))
 	}
 	if snap.Denylist.HasWorkload(wl.ID) {
-		return deny(ReasonWorkloadDenied, "access_denied", "workload is denied")
+		return with(deny(ReasonWorkloadDenied, "access_denied", "workload is denied"))
 	}
 
-	sub, fromSTS, err := c.verifySubject(req.SubjectToken, snap)
-	if err != nil {
-		return deny(ReasonInvalidSubjectToken, "invalid_request", err.Error())
+	if subErr != nil {
+		return deny(ReasonInvalidSubjectToken, "invalid_request", subErr.Error())
+	}
+	d := func(code, oauth, desc string) outcome {
+		return deny(code, oauth, desc).withSubject(sub)
 	}
 	if err := sub.ValidateSubject(); err != nil {
-		return deny(ReasonInvalidSubjectToken, "invalid_request", err.Error())
+		return d(ReasonInvalidSubjectToken, "invalid_request", err.Error())
 	}
 	if snap.Denylist.HasPrincipal(sub.Sub) {
-		return deny(ReasonPrincipalDenied, "access_denied", "principal is denied")
+		return d(ReasonPrincipalDenied, "access_denied", "principal is denied")
 	}
 	if err := sub.ValidateTime(now, 0); err != nil {
 		if errors.Is(err, token.ErrExpired) {
-			return deny(ReasonExpired, "invalid_request", err.Error())
+			return d(ReasonExpired, "invalid_request", err.Error())
 		}
-		return deny(ReasonInvalidSubjectToken, "invalid_request", err.Error())
+		return d(ReasonInvalidSubjectToken, "invalid_request", err.Error())
 	}
 
 	if fromSTS {
 		if err := sub.ValidateAudience(req.AgentID); err != nil {
-			return deny(ReasonChainIntegrity, "access_denied", "subject token audience must be the requesting agent")
+			return d(ReasonChainIntegrity, "access_denied", "subject token audience must be the requesting agent")
 		}
 	} else {
 		if err := sub.ValidateAudience(req.AgentID); err != nil {
-			return deny(ReasonInvalidSubjectToken, "invalid_request", "user token audience must be the requesting agent")
+			return d(ReasonInvalidSubjectToken, "invalid_request", "user token audience must be the requesting agent")
 		}
 	}
 
 	issuedScope, err := narrowScope(req.Scope, sub.Scope, agent.MaxScopes)
 	if err != nil {
-		return deny(ReasonScopeWidening, "access_denied", err.Error())
+		return d(ReasonScopeWidening, "access_denied", err.Error())
 	}
 
 	newChain := token.AppendChain(sub)
 	depth := len(newChain) + 1
 	if depth > agent.MaxDepth {
-		return deny(ReasonDepthExceeded, "access_denied", "delegation depth exceeded")
+		return d(ReasonDepthExceeded, "access_denied", "delegation depth exceeded")
 	}
 
 	txn := sub.Txn
@@ -307,18 +340,18 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 			txn = newID("txn")
 		}
 		if len(sub.ActChain) != 0 || sub.Act != nil {
-			return deny(ReasonChainIntegrity, "access_denied", "user token must not carry an actor chain")
+			return d(ReasonChainIntegrity, "access_denied", "user token must not carry an actor chain")
 		}
 	} else if txn == "" {
-		return deny(ReasonChainIntegrity, "invalid_request", "missing txn")
+		return d(ReasonChainIntegrity, "invalid_request", "missing txn")
 	}
 
 	if fromSTS {
 		if err := c.Replay.Consume(sub.Jti, sub.Exp); err != nil {
 			if errors.Is(err, ErrReplay) || errors.Is(err, errEmptyJTI) || errors.Is(err, ErrReplayUnavailable) {
-				return deny(ReasonReplayedToken, "invalid_grant", err.Error())
+				return d(ReasonReplayedToken, "invalid_grant", err.Error())
 			}
-			return deny(ReasonInvalidRequest, "server_error", err.Error())
+			return d(ReasonInvalidRequest, "server_error", err.Error())
 		}
 	}
 
@@ -327,7 +360,7 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 		jkt = wl.PossessedJKT
 	}
 	if jkt == "" {
-		return deny(ReasonMissingCNF, "invalid_request", "confirmation key must be possessed by the workload")
+		return d(ReasonMissingCNF, "invalid_request", "confirmation key must be possessed by the workload")
 	}
 
 	ttl := c.ttl()
@@ -352,7 +385,7 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 
 	raw, err := snap.Signer.SignClaims(claims)
 	if err != nil {
-		return deny(ReasonInvalidRequest, "server_error", err.Error())
+		return d(ReasonInvalidRequest, "server_error", err.Error())
 	}
 	return outcome{
 		ExchangeResult: ExchangeResult{

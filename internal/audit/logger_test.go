@@ -3,8 +3,10 @@ package audit
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -60,6 +62,158 @@ func TestHashChain(t *testing.T) {
 	defer l2.Close()
 	if l2.PrevHash() != events[1].Hash {
 		t.Fatal("recover prev hash")
+	}
+}
+
+func TestAppendInvalidUTF8ReopensAndTraces(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{
+		EventType:  "token_denied",
+		ReasonCode: "invalid_request",
+		Txn:        "txn-1",
+		JTI:        "jti-1",
+		AgentID:    "\xff",
+		Audience:   "aud\xfe",
+		Scope:      "a\xffb",
+		Hops:       []string{"\xfe"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	l2, err := NewLogger(path)
+	if err != nil {
+		t.Fatalf("reopen after invalid UTF-8: %v", err)
+	}
+	if err := l2.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := Trace(Query{JTI: "jti-1"}, []string{path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 1 || recs[0].Txn != "txn-1" {
+		t.Fatalf("%+v", recs)
+	}
+}
+
+func TestAppendOversizedStringReopensAndTraces(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{
+		EventType:  "token_denied",
+		ReasonCode: "invalid_request",
+		Txn:        "txn-1",
+		JTI:        "jti-1",
+		AgentID:    strings.Repeat("a", 2<<20),
+		Audience:   strings.Repeat("b", 2<<20),
+		Scope:      strings.Repeat("c", 2<<20),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Size() > MaxLineBytes {
+		t.Fatalf("line %d exceeds scanner cap", st.Size())
+	}
+	if _, err := NewLogger(path); err != nil {
+		t.Fatalf("reopen after oversized fields: %v", err)
+	}
+	recs, err := Trace(Query{JTI: "jti-1"}, []string{path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 1 || recs[0].Txn != "txn-1" {
+		t.Fatalf("%+v", recs)
+	}
+	if len(recs[0].AgentID) > maxEventString {
+		t.Fatalf("agent_id len %d", len(recs[0].AgentID))
+	}
+}
+
+func TestRecoverRejectsSuffixBeyondCanonicalBound(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{
+		EventType:  "token_denied",
+		ReasonCode: "invalid_request",
+		Txn:        "txn-1",
+		JTI:        "jti-1",
+		AgentID:    strings.Repeat("a", maxEventString),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	needle := `"agent_id":"` + strings.Repeat("a", maxEventString) + `"`
+	tampered := strings.Replace(string(b), needle, `"agent_id":"`+strings.Repeat("a", maxEventString)+`INJECTED"`, 1)
+	if tampered == string(b) {
+		t.Fatal("replace")
+	}
+	if err := os.WriteFile(path, []byte(tampered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewLogger(path)
+	if err == nil || !errors.Is(err, ErrChainBroken) {
+		t.Fatalf("got %v want ErrChainBroken", err)
+	}
+	_, err = Trace(Query{Txn: "txn-1"}, []string{path}, nil)
+	if err == nil || !errors.Is(err, ErrChainBroken) {
+		t.Fatalf("trace %v want ErrChainBroken", err)
+	}
+}
+
+func TestRecoverRejectsBrokenHash(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{EventType: "token_minted", ReasonCode: "ok", Txn: "t1", JTI: "jti-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.Replace(string(b), `"reason_code":"ok"`, `"reason_code":"no"`, 1)
+	if tampered == string(b) {
+		t.Fatal("replace")
+	}
+	if err := os.WriteFile(path, []byte(tampered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewLogger(path)
+	if err == nil || !errors.Is(err, ErrChainBroken) {
+		t.Fatalf("got %v want ErrChainBroken", err)
 	}
 }
 

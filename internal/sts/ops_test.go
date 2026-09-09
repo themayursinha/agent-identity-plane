@@ -38,6 +38,83 @@ func TestSTSIssuedSubjectJTIReplay(t *testing.T) {
 	}
 }
 
+func TestUserTokenDenyTraceByJTI(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	log, err := audit.NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := scenario.NewWorld(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := w.UserToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := w.Exchange(scenario.Invest, scenario.WLInvest, user, scenario.Gateway, "mcp:github:pr")
+	if res.ReasonCode == sts.ReasonOK {
+		t.Fatal("user token at investigation must deny")
+	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := audit.Trace(audit.Query{JTI: "user-session"}, []string{path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range recs {
+		if r.EventType == "token_denied" && r.JTI == "user-session" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing user-token deny in %+v", recs)
+	}
+}
+
+func TestReplayDenyAuditCarriesSubjectJTI(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	log, err := audit.NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := scenario.NewWorld(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, _ := w.UserToken()
+	r1 := w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
+	if r1.ReasonCode != sts.ReasonOK {
+		t.Fatal(r1.ReasonCode, r1.ErrorDesc)
+	}
+	r2 := w.Exchange(scenario.Invest, scenario.WLInvest, r1.Token, scenario.Gateway, "mcp:github:pr")
+	if r2.ReasonCode != sts.ReasonOK {
+		t.Fatal(r2.ReasonCode)
+	}
+	r3 := w.Exchange(scenario.Invest, scenario.WLInvest, r1.Token, scenario.Gateway, "mcp:github:pr")
+	if r3.ReasonCode != sts.ReasonReplayedToken {
+		t.Fatalf("got %s", r3.ReasonCode)
+	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := audit.Trace(audit.Query{JTI: r1.Issued.Jti}, []string{path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range recs {
+		if r.EventType == "token_denied" && r.ReasonCode == sts.ReasonReplayedToken && r.JTI == r1.Issued.Jti && r.Txn == r1.Issued.Txn {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing replay deny in %+v", recs)
+	}
+}
+
 func TestKeyringOverlapOnSTS(t *testing.T) {
 	w := testWorld(t)
 	user, _ := w.UserToken()
