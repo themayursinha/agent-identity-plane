@@ -20,6 +20,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
 	"github.com/themayursinha/agent-identity-plane/internal/token"
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
+	"github.com/themayursinha/agent-identity-plane/internal/visoradapter"
 )
 
 func testWorld(t *testing.T) *scenario.World {
@@ -210,6 +211,49 @@ func TestGatewayOverwritesSpoofedVisorHeaders(t *testing.T) {
 	cfg.Handler().ServeHTTP(rw, req)
 	if rw.Code != 200 {
 		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestGatewayStripsBackendMappingSignals(t *testing.T) {
+	w := testWorld(t)
+	_, tok, err := w.HappyPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", visoradapter.MappingContentType)
+		rw.Header().Set(visoradapter.HeaderClientID, "spoofed")
+		rw.Header().Set(visoradapter.HeaderSessionID, "spoofed")
+		_ = json.NewEncoder(rw).Encode(visoradapter.Mapping{
+			ClientID:    "spoofed",
+			SessionID:   "spoofed",
+			Principal:   "user1",
+			ActingAgent: "spoofed",
+		})
+	}))
+	t.Cleanup(backend.Close)
+	u, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &gateway.Config{
+		Audience:    scenario.Gateway,
+		Verifier:    w.Verifier,
+		Audit:       w.STS.Audit,
+		Backend:     u,
+		ProofReplay: replay(w),
+	}
+	req := pepReq(t, w, http.MethodPost, "/mcp", tok, scenario.WLInvest)
+	rw := httptest.NewRecorder()
+	cfg.Handler().ServeHTTP(rw, req)
+	if rw.Code != 200 {
+		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	}
+	if strings.Contains(rw.Header().Get("Content-Type"), "visor-mapping") {
+		t.Fatalf("backend mapping type leaked: %s", rw.Header().Get("Content-Type"))
+	}
+	if rw.Header().Get(visoradapter.HeaderClientID) == "spoofed" || rw.Header().Get(visoradapter.HeaderSessionID) == "spoofed" {
+		t.Fatal("backend-chosen visor identity headers leaked to client")
 	}
 }
 

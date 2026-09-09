@@ -174,6 +174,9 @@ func Fetch(ctx context.Context, req Request) (visoradapter.Mapping, error) {
 		resp.Header.Get(visoradapter.HeaderSessionID) != m.SessionID {
 		return zero, fmt.Errorf("%w: visor identity headers do not match mapping", ErrMapping)
 	}
+	if err := mappingAgreesWithToken(m, req.Token); err != nil {
+		return zero, err
+	}
 	return m, nil
 }
 
@@ -211,6 +214,35 @@ func Command(visorBin string, m visoradapter.Mapping, extra []string) (string, [
 func isMappingContentType(h string) bool {
 	mt, _, err := mime.ParseMediaType(h)
 	return err == nil && mt == visoradapter.MappingContentType
+}
+
+func mappingAgreesWithToken(m visoradapter.Mapping, raw string) error {
+	_, c, _, err := token.ParseUnverified(raw)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrMapping, err)
+	}
+	actor := ""
+	if c.Act != nil {
+		actor = c.Act.Sub
+	}
+	if strings.TrimSpace(c.Txn) == "" || m.SessionID != c.Txn {
+		return fmt.Errorf("%w: session id does not match token", ErrMapping)
+	}
+	if m.Principal != c.Sub || m.ActingAgent != actor {
+		return fmt.Errorf("%w: actor chain does not match token", ErrMapping)
+	}
+	if m.ClientID != actor && m.ClientID != lastSegment(actor) {
+		return fmt.Errorf("%w: client id does not match token", ErrMapping)
+	}
+	return nil
+}
+
+func lastSegment(id string) string {
+	id = strings.TrimSuffix(id, "/")
+	if i := strings.LastIndex(id, "/"); i >= 0 && i+1 < len(id) {
+		return id[i+1:]
+	}
+	return id
 }
 
 // FormatArgv joins name and args with spaces for -print.

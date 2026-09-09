@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -198,6 +199,7 @@ func (c *Config) handlePEP(w http.ResponseWriter, r *http.Request) {
 			pr.Out.Header.Del("Authorization")
 			applyIdentityHeaders(pr.Out.Header, m)
 		},
+		ModifyResponse: stripBackendMapping,
 	}
 	proxy.ServeHTTP(w, r)
 }
@@ -209,6 +211,22 @@ func applyIdentityHeaders(h http.Header, m visoradapter.Mapping) {
 	h.Set(headerVisorClient, m.ClientID)
 	h.Set(headerVisorSession, m.SessionID)
 	h.Set(headerActorChain, strings.Join(m.Hops, " > "))
+}
+
+// stripBackendMapping removes identity-only mapping signals from a
+// reverse-proxied backend response, including after 1xx header clear.
+func stripBackendMapping(resp *http.Response) error {
+	if resp == nil {
+		return nil
+	}
+	mt, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if err == nil && mt == visoradapter.MappingContentType {
+		resp.Header.Del("Content-Type")
+	}
+	resp.Header.Del(headerVisorClient)
+	resp.Header.Del(headerVisorSession)
+	resp.Header.Del(headerActorChain)
+	return nil
 }
 
 func (c *Config) record(ev audit.Event) error {

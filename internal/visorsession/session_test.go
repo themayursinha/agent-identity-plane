@@ -193,6 +193,32 @@ func TestFetchRejectsHeaderMappingMismatch(t *testing.T) {
 	}
 }
 
+func TestFetchRejectsMappingDisagreeingWithToken(t *testing.T) {
+	w := testWorld(t)
+	_, tok, err := w.HappyPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := completeMapping()
+	m.SessionID = "not-the-token-txn"
+	ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", visoradapter.MappingContentType)
+		rw.Header().Set(visoradapter.HeaderClientID, m.ClientID)
+		rw.Header().Set(visoradapter.HeaderSessionID, m.SessionID)
+		_ = json.NewEncoder(rw).Encode(m)
+	}))
+	t.Cleanup(ts.Close)
+	_, err = visorsession.Fetch(context.Background(), visorsession.Request{
+		GatewayURL: ts.URL + "/session",
+		Token:      tok,
+		ProofKey:   w.WL[scenario.WLInvest],
+		Now:        func() time.Time { return w.Now },
+	})
+	if !errors.Is(err, visorsession.ErrMapping) {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestFetchRejectsOversizedBody(t *testing.T) {
 	kf, err := token.GenerateEd25519("wl")
 	if err != nil {

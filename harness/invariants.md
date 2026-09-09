@@ -209,8 +209,10 @@ HTTP redirects are not followed (DPoP `htm`/`htu` stay bound to the
 configured URL). Only a complete mapping (`client_id`, `session_id`, acting agent,
 principal) from that identity-only response is passed to `mcp-visor serve`.
 The response must be `application/vnd.aip.visor-mapping+json` with
-`X-Visor-Client-Id` / `X-Visor-Session-Id` equal to the JSON (a
-`-backend` reverse-proxy body is not a mapping). Extra
+`X-Visor-Client-Id` / `X-Visor-Session-Id` equal to the JSON, and those
+fields must match the access token (`txn`, `sub`, `act.sub`). visor-gateway
+`-backend` strips that media type and those headers from proxied
+responses. Extra
 visor arguments cannot set `-client-id`, `--client-id`, `-session-id`,
 or `--session-id` (including `=` forms). `-dpop-key` is a 0600 Ed25519
 key or keyring file. `-print` prints argv and does not exec. Starting
