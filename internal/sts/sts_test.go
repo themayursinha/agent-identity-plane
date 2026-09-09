@@ -365,6 +365,49 @@ func TestMintFailsClosedWhenAuditUnhealthy(t *testing.T) {
 	}
 }
 
+func TestActorDenyAfterVerifiedSubjectRecordsJTI(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	log, err := audit.NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := scenario.NewWorld(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := w.UserToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := w.STS.Exchange(context.Background(), sts.ExchangeRequest{
+		GrantType:    sts.GrantTokenExchange,
+		SubjectToken: user,
+		ActorToken:   "not-a-jwt",
+		AgentID:      scenario.Oncall,
+		Audience:     scenario.Invest,
+		Scope:        "mcp:github:pr",
+	})
+	if res.ReasonCode != sts.ReasonInvalidActorToken {
+		t.Fatalf("got %s", res.ReasonCode)
+	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := audit.Trace(audit.Query{JTI: "user-session"}, []string{path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range recs {
+		if r.EventType == "token_denied" && r.JTI == "user-session" && r.ReasonCode == sts.ReasonInvalidActorToken {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing actor deny in %+v", recs)
+	}
+}
+
 func TestHTTPTokenEndpointProofJTIDoesNotPoisonSubjectReplay(t *testing.T) {
 	w := testWorld(t)
 	ts := httptest.NewServer(w.STS.Handler())

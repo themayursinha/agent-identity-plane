@@ -269,26 +269,33 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 		return deny(ReasonInvalidRequest, "invalid_request", "requested_token_type")
 	}
 
+	sub, fromSTS, subErr := c.verifySubject(req.SubjectToken, snap)
+	with := func(o outcome) outcome {
+		if subErr == nil {
+			return o.withSubject(sub)
+		}
+		return o
+	}
+
 	wl, err := snap.Attestor.Attest(ctx, req.ActorToken)
 	if err != nil {
-		return deny(ReasonInvalidActorToken, "invalid_request", err.Error())
+		return with(deny(ReasonInvalidActorToken, "invalid_request", err.Error()))
 	}
 
 	now := c.now()
 	agent, err := snap.Registry.Authorize(req.AgentID, wl.ID, req.Audience, now)
 	if err != nil {
-		return deny(mapRegistryErr(err), "access_denied", err.Error())
+		return with(deny(mapRegistryErr(err), "access_denied", err.Error()))
 	}
 	if snap.Denylist.HasAgent(req.AgentID) {
-		return deny(ReasonAgentDenied, "access_denied", "agent is denied")
+		return with(deny(ReasonAgentDenied, "access_denied", "agent is denied"))
 	}
 	if snap.Denylist.HasWorkload(wl.ID) {
-		return deny(ReasonWorkloadDenied, "access_denied", "workload is denied")
+		return with(deny(ReasonWorkloadDenied, "access_denied", "workload is denied"))
 	}
 
-	sub, fromSTS, err := c.verifySubject(req.SubjectToken, snap)
-	if err != nil {
-		return deny(ReasonInvalidSubjectToken, "invalid_request", err.Error())
+	if subErr != nil {
+		return deny(ReasonInvalidSubjectToken, "invalid_request", subErr.Error())
 	}
 	d := func(code, oauth, desc string) outcome {
 		return deny(code, oauth, desc).withSubject(sub)

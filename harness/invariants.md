@@ -183,9 +183,10 @@ generic JSONL. Operators look up a stolen token by minted `jti`
 (`trace -jti`) or by `txn` (`trace -txn`); jti→txn is taken from
 verified records, and a jti query returns that transaction, or the
 verified records that carry the jti when the subject had no txn. Once a
-subject JWT verifies (STS signature and issuer at the PEP), denials
-carry that `txn`/`jti`. `FormatTrace` prints only printable runes so
-unverified visor fields cannot inject extra hops. Hashed Event
+subject JWT verifies against STS or IdP keys, denials carry that
+`txn`/`jti` even when the reason code is actor, registry, or denylist.
+`FormatTrace` prints only printable runes so unverified visor fields
+cannot inject extra hops. Hashed Event
 strings are valid UTF-8 and length-bounded (invalid or oversized
 request fields are replaced or truncated) so Append and reopen
 compute the same payload hash inside the 1MiB scanner cap. A record

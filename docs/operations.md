@@ -81,7 +81,10 @@ hops. `trace -jti JTI` maps jti→txn from verified `-audit` records
 only. `-audit` is always chain-verified; only `-visor` may be generic
 JSONL. The hash chain is not a MAC: tail truncation, an empty file,
 and a fully recomputed log are not detected. Hashed Event strings are
-valid UTF-8 and length-bounded so recover can reopen the file. See [runbooks.md](runbooks.md).
+valid UTF-8 and length-bounded so recover can reopen the file. A
+pre-v0.7 `-audit-log` that contains invalid UTF-8 or oversized deny
+fields will fail open-and-trace; copy it aside and start a new file.
+See [runbooks.md](runbooks.md).
 
 ## Endpoints
 

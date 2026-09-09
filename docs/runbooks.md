@@ -20,7 +20,8 @@ suffix remains. Keep the file on integrity-protected storage and copy
 it off-box. Hashed Event strings are valid UTF-8 and length-bounded:
 invalid or oversized request fields are replaced/truncated before
 hashing so a deny that copied form fields cannot make the log
-unverifiable.
+unverifiable. A pre-v0.7 log that already contains those non-canonical
+strings will fail open; copy it aside and start a new `-audit-log`.
 
 A stolen compact JWT still carries `jti` and `txn`. Inspect first,
 then reconstruct:
@@ -39,7 +40,8 @@ the transaction. Output labels `verified=` / `unverified=` and the
 source path. Gateway allow/deny records are in the gateway
 `-audit-log`; pass that path as `-audit` when the incident is at the PEP.
 Once a subject JWT verifies, STS and visor-gateway denials record that
-`txn`/`jti` so a stolen-token lookup includes failed hops.
+`txn`/`jti` so a stolen-token lookup includes failed hops, including
+when the actor token or denylist is what produced the reason code.
 
 ## Key compromise (STS signing key)
 
