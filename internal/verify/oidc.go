@@ -16,13 +16,14 @@ type OIDCDiscovery struct {
 
 // FetchOIDC loads {issuer}/.well-known/openid-configuration. The issuer
 // URL and the document's jwks_uri must pass CheckJWKSURL. The document
-// issuer must match the requested issuer.
+// issuer must equal the configured issuer exactly (trailing slash is
+// significant). A terminating slash is stripped only when forming the
+// well-known URL.
 func FetchOIDC(issuer string) (OIDCDiscovery, error) {
-	iss := strings.TrimRight(issuer, "/")
-	if err := CheckJWKSURL(iss); err != nil {
+	if err := CheckJWKSURL(issuer); err != nil {
 		return OIDCDiscovery{}, err
 	}
-	raw, err := getCapped(iss + "/.well-known/openid-configuration")
+	raw, err := getCapped(strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration")
 	if err != nil {
 		return OIDCDiscovery{}, err
 	}
@@ -33,17 +34,16 @@ func FetchOIDC(issuer string) (OIDCDiscovery, error) {
 	if err := jsonutil.Unmarshal(raw, &doc); err != nil {
 		return OIDCDiscovery{}, fmt.Errorf("verify: oidc discovery: %w", err)
 	}
-	docIss := strings.TrimRight(doc.Issuer, "/")
-	if docIss == "" || doc.JWKSURI == "" {
+	if doc.Issuer == "" || doc.JWKSURI == "" {
 		return OIDCDiscovery{}, fmt.Errorf("verify: oidc discovery missing issuer or jwks_uri")
 	}
-	if docIss != iss {
+	if doc.Issuer != issuer {
 		return OIDCDiscovery{}, fmt.Errorf("verify: oidc issuer mismatch")
 	}
 	if err := CheckJWKSURL(doc.JWKSURI); err != nil {
 		return OIDCDiscovery{}, err
 	}
-	return OIDCDiscovery{Issuer: docIss, JWKSURI: doc.JWKSURI}, nil
+	return OIDCDiscovery{Issuer: doc.Issuer, JWKSURI: doc.JWKSURI}, nil
 }
 
 // LiveOIDC returns a KeysFn that re-runs discovery and JWKS fetch on each call.

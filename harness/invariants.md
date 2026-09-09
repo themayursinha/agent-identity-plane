@@ -128,8 +128,8 @@ JWT-SVID verification may fetch JWKS from `-spiffe-jwks-url` or from
 OIDC discovery (`-spiffe-oidc-issuer` → `{issuer}/.well-known/openid-configuration`
 → `jwks_uri`). Those URLs, and any redirect, must be `https` except
 loopback `http`. TLS is 1.2+; bodies are capped at 1MiB; an empty
-JWKS fails closed. Discovery `issuer` must match the configured
-issuer. Keys are re-fetched on each `Attest`. `/readyz` fails if a
-live attestor cannot load keys. This is not a SPIRE Workload API
-client.
+JWKS fails closed. Discovery `issuer` and JWT `iss` must equal the
+configured issuer exactly (trailing slash is significant). Keys are
+re-fetched on each `Attest`. `/readyz` fails if a live attestor cannot
+load keys. This is not a SPIRE Workload API client.
 

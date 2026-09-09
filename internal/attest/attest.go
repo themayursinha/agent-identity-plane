@@ -113,9 +113,7 @@ func (s *SPIFFEJWT) Attest(ctx context.Context, actorToken string) (WorkloadIden
 		return WorkloadIdentity{}, ErrUnattested
 	}
 	if s.Issuer != "" {
-		want := strings.TrimRight(s.Issuer, "/")
-		got := strings.TrimRight(c.Iss, "/")
-		if got == "" || got != want {
+		if err := c.ValidateIssuer(s.Issuer); err != nil {
 			return WorkloadIdentity{}, ErrUnattested
 		}
 	}

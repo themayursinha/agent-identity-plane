@@ -95,7 +95,8 @@ workload keys. Use one of `-spiffe-jwks`, `-spiffe-jwks-url`, or
 `-spiffe-oidc-issuer`. URLs must be `https` except loopback `http`
 (TLS 1.2+, 1MiB cap, same check on redirects). OIDC discovery is
 `{issuer}/.well-known/openid-configuration`; the document `issuer`
-must match, and `jwks_uri` is fetched under the same URL policy.
+must equal the configured issuer exactly (trailing slash is
+significant), and `jwks_uri` is fetched under the same URL policy.
 Keys are re-fetched on each `Attest`. `/readyz` fails if that live
 source cannot load keys. This is still JWKS verification, not a
 SPIRE Workload API client.

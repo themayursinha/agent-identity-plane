@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -62,7 +61,7 @@ func cmdServe(args []string) error {
 		}
 	}
 	if *spiffeOIDC != "" {
-		if err := verify.CheckJWKSURL(strings.TrimRight(*spiffeOIDC, "/")); err != nil {
+		if err := verify.CheckJWKSURL(*spiffeOIDC); err != nil {
 			return err
 		}
 	}
@@ -119,7 +118,7 @@ func cmdServe(args []string) error {
 		if err != nil {
 			return err
 		}
-		attestor = attest.FirstSuccessful{local, &attest.SPIFFEJWT{KeysFn: fn, Audience: *issuer, Issuer: strings.TrimRight(*spiffeOIDC, "/"), Now: now}}
+		attestor = attest.FirstSuccessful{local, &attest.SPIFFEJWT{KeysFn: fn, Audience: *issuer, Issuer: *spiffeOIDC, Now: now}}
 	}
 	log, err := audit.NewLogger(*auditPath)
 	if err != nil {

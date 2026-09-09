@@ -95,8 +95,8 @@ func TestSPIFFEJWTLiveJWKSAndIssuer(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 	a.Issuer = "http://oidc.example.test/"
-	if _, err := a.Attest(context.Background(), rawTok); err != nil {
-		t.Fatalf("trailing-slash issuer: %v", err)
+	if _, err := a.Attest(context.Background(), rawTok); err != ErrUnattested {
+		t.Fatalf("trailing-slash issuer must not match: %v", err)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/themayursinha/agent-identity-plane/internal/token"
@@ -80,6 +81,30 @@ func TestFetchOIDCRejectsIssuerMismatch(t *testing.T) {
 	t.Cleanup(srv.Close)
 	if _, err := verify.FetchOIDC(srv.URL); err == nil {
 		t.Fatal("expected issuer mismatch")
+	}
+}
+
+func TestFetchOIDCRejectsTrailingSlashMismatch(t *testing.T) {
+	var issuer string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"issuer":   strings.TrimRight(issuer, "/"),
+			"jwks_uri": strings.TrimRight(issuer, "/") + "/jwks.json",
+		})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	issuer = srv.URL + "/"
+	if _, err := verify.FetchOIDC(issuer); err == nil {
+		t.Fatal("trailing-slash issuer must not match slashless metadata")
+	}
+	d, err := verify.FetchOIDC(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Issuer != srv.URL {
+		t.Fatalf("%+v", d)
 	}
 }
 

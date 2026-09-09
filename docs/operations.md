@@ -116,6 +116,7 @@ for a stdio visor process; visor stdio is not an HTTP backend.
 ```
 
 Discovery GETs `{issuer}/.well-known/openid-configuration`, requires
-the document `issuer` to match, then fetches `jwks_uri`. Serve fails
-to start if that source is unreachable or empty. `/readyz` fails later
-if it cannot load keys. This is not the SPIRE Workload API.
+the document `issuer` (and later JWT `iss`) to equal `-spiffe-oidc-issuer`
+exactly, then fetches `jwks_uri`. Serve fails to start if that source
+is unreachable or empty. `/readyz` fails later if it cannot load keys.
+This is not the SPIRE Workload API.
