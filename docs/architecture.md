@@ -160,7 +160,7 @@ with a DPoP proof and starts `mcp-visor serve` using only the returned
 flags. The gateway URL uses the same policy as JWKS (`https`, or
 loopback `http`; no query or fragment). Redirects are not followed.
 On Unix the process is replaced by visor; `AIP_ACCESS_TOKEN` is not
-inherited. `-dpop-key` is a 0600 Ed25519
+inherited (case-insensitive). Exec is Unix-only. `-dpop-key` is a 0600 Ed25519
 file. Starting visor by hand with a typed `--client-id` is still
 spoofable; this command is the supported authentic path. This is not a
 DPoP nonce deployment and not a Production identity plane.

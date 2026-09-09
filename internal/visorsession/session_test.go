@@ -305,6 +305,7 @@ func TestChildEnvDropsAccessToken(t *testing.T) {
 	got := visorsession.ChildEnv([]string{
 		"PATH=/usr/bin",
 		visorsession.AccessTokenEnv + "=stolen",
+		"aip_access_token=also-stolen",
 		"HOME=/tmp",
 		visorsession.AccessTokenEnv + "_OTHER=keep",
 	})

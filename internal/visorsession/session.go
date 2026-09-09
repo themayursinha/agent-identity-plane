@@ -211,10 +211,10 @@ func FormatArgv(name string, args []string) string {
 // ChildEnv copies env without AIP_ACCESS_TOKEN so mcp-visor and its
 // descendants do not inherit the STS access token.
 func ChildEnv(env []string) []string {
-	prefix := AccessTokenEnv + "="
 	out := make([]string, 0, len(env))
 	for _, e := range env {
-		if strings.HasPrefix(e, prefix) {
+		name, _, found := strings.Cut(e, "=")
+		if found && strings.EqualFold(name, AccessTokenEnv) {
 			continue
 		}
 		out = append(out, e)
