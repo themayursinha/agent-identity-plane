@@ -20,6 +20,26 @@ const maxJWKSBytes = 1 << 20
 // ErrJWKSURL is returned when a JWKS URL is not https (or loopback http).
 var ErrJWKSURL = errors.New("verify: jwks url must be https or loopback http")
 
+// ErrEmptyJWKS is returned when a JWKS document contains no keys.
+var ErrEmptyJWKS = errors.New("verify: empty JWKS")
+
+var jwksClient = &http.Client{
+	Timeout: 2 * time.Second,
+	Transport: &http.Transport{
+		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
+		Proxy:               http.ProxyFromEnvironment,
+		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConns:        32,
+		MaxIdleConnsPerHost: 8,
+	},
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 3 {
+			return fmt.Errorf("verify: too many JWKS redirects")
+		}
+		return CheckJWKSURL(req.URL.String())
+	},
+}
+
 // LiveJWKS returns a KeysFn that re-reads path or fetches url on each call.
 func LiveJWKS(path, rawURL string) (func() (token.JWKS, error), error) {
 	if path == "" && rawURL == "" {
@@ -39,7 +59,11 @@ func LiveJWKS(path, rawURL string) (func() (token.JWKS, error), error) {
 		if err != nil {
 			return token.JWKS{}, err
 		}
-		return token.ParseJWKS(raw)
+		ks, err := token.ParseJWKS(raw)
+		if err != nil {
+			return token.JWKS{}, err
+		}
+		return requireKeys(ks)
 	}, nil
 }
 
@@ -76,20 +100,7 @@ func FetchJWKS(rawURL string) (token.JWKS, error) {
 	if err := CheckJWKSURL(rawURL); err != nil {
 		return token.JWKS{}, err
 	}
-	client := &http.Client{
-		Timeout: 2 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
-			Proxy:           http.ProxyFromEnvironment,
-		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 3 {
-				return fmt.Errorf("verify: too many JWKS redirects")
-			}
-			return CheckJWKSURL(req.URL.String())
-		},
-	}
-	resp, err := client.Get(rawURL)
+	resp, err := jwksClient.Get(rawURL)
 	if err != nil {
 		return token.JWKS{}, err
 	}
@@ -104,5 +115,16 @@ func FetchJWKS(rawURL string) (token.JWKS, error) {
 	if len(raw) > maxJWKSBytes {
 		return token.JWKS{}, fmt.Errorf("verify: jwks document exceeds %d bytes", maxJWKSBytes)
 	}
-	return token.ParseJWKS(raw)
+	ks, err := token.ParseJWKS(raw)
+	if err != nil {
+		return token.JWKS{}, err
+	}
+	return requireKeys(ks)
+}
+
+func requireKeys(ks token.JWKS) (token.JWKS, error) {
+	if len(ks.Keys) == 0 {
+		return token.JWKS{}, ErrEmptyJWKS
+	}
+	return ks, nil
 }

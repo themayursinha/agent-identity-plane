@@ -16,6 +16,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/gateway"
 	"github.com/themayursinha/agent-identity-plane/internal/scenario"
 	"github.com/themayursinha/agent-identity-plane/internal/token"
+	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
 
 func testWorld(t *testing.T) *scenario.World {
@@ -305,6 +306,19 @@ func TestReadyzRequiresJWKS(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != 200 {
 		t.Fatalf("readyz %d", resp.StatusCode)
+	}
+}
+
+func TestReadyzRejectsEmptyJWKS(t *testing.T) {
+	cfg := &gateway.Config{
+		Audience:     "https://mcp-gateway.example.test",
+		Verifier:     &verify.Verifier{KeysFn: func() (token.JWKS, error) { return token.JWKS{}, nil }},
+		IdentityOnly: true,
+	}
+	rw := httptest.NewRecorder()
+	cfg.Handler().ServeHTTP(rw, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rw.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readyz %d", rw.Code)
 	}
 }
 

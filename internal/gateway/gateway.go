@@ -99,12 +99,15 @@ func (c *Config) keysReady() error {
 	if c == nil || c.Verifier == nil {
 		return fmt.Errorf("gateway: verifier required")
 	}
-	fn := c.Verifier.KeysFn
-	if fn != nil {
-		_, err := fn()
-		return err
+	n := len(c.Verifier.Keys.Keys)
+	if c.Verifier.KeysFn != nil {
+		ks, err := c.Verifier.KeysFn()
+		if err != nil {
+			return err
+		}
+		n = len(ks.Keys)
 	}
-	if len(c.Verifier.Keys.Keys) == 0 {
+	if n == 0 {
 		return fmt.Errorf("gateway: empty JWKS")
 	}
 	return nil

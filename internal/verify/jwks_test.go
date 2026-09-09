@@ -126,3 +126,43 @@ func TestFetchJWKSRejectsRedirectToNonLoopbackHTTP(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestFetchJWKSRejectsEmptyKeys(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"keys":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	if _, err := verify.FetchJWKS(srv.URL); !errors.Is(err, verify.ErrEmptyJWKS) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestFetchJWKSReusesClient(t *testing.T) {
+	n := 0
+	kf, err := token.GenerateEd25519("sts-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := token.SignerFromKeyFile(kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := s.JWKS().Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n++
+		_, _ = w.Write(raw)
+	}))
+	t.Cleanup(srv.Close)
+	if _, err := verify.FetchJWKS(srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verify.FetchJWKS(srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("fetches %d", n)
+	}
+}
