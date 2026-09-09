@@ -65,6 +65,44 @@ func TestHashChain(t *testing.T) {
 	}
 }
 
+func TestAppendInvalidUTF8ReopensAndTraces(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{
+		EventType:  "token_denied",
+		ReasonCode: "invalid_request",
+		Txn:        "txn-1",
+		JTI:        "jti-1",
+		AgentID:    "\xff",
+		Audience:   "aud\xfe",
+		Scope:      "a\xffb",
+		Hops:       []string{"\xfe"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	l2, err := NewLogger(path)
+	if err != nil {
+		t.Fatalf("reopen after invalid UTF-8: %v", err)
+	}
+	if err := l2.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := Trace(Query{JTI: "jti-1"}, []string{path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 1 || recs[0].Txn != "txn-1" {
+		t.Fatalf("%+v", recs)
+	}
+}
+
 func TestRecoverRejectsBrokenHash(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.jsonl")
 	l, err := NewLogger(path)

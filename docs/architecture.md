@@ -143,8 +143,8 @@ always that Event stream: opening the log and tracing it verify
 `prev_hash` / `chain_index` / payload `hash` from genesis; any
 non-audit line is a break. Only `-visor` may be generic JSONL.
 `trace -txn` reconstructs a transaction. `trace -jti` maps jti→txn
-from verified records and returns that transaction's hops. The chain
-is not a MAC (tail truncation, empty file, and a fully recomputed log
-are not detected). Key-compromise steps are in [runbooks.md](runbooks.md),
+from verified records and returns that transaction's hops. Hashed
+Event strings are valid UTF-8. The chain is not a MAC (tail
+truncation, empty file, and a fully recomputed log are not detected). Key-compromise steps are in [runbooks.md](runbooks.md),
 including regenerating a visor-gateway `-jwks` file copy. This is not
 Production (no live visor-only `--client-id` path; no DPoP nonce).

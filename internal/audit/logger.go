@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/themayursinha/agent-identity-plane/internal/jsonutil"
 )
@@ -163,6 +165,7 @@ func verifyEvent(e Event, prev string, wantIndex uint64) error {
 }
 
 func payloadHash(e Event) (string, error) {
+	canonicalizeEvent(&e)
 	e.Hash = ""
 	payload, err := json.Marshal(e)
 	if err != nil {
@@ -172,6 +175,38 @@ func payloadHash(e Event) (string, error) {
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
+// canonicalizeEvent makes Event strings valid UTF-8 so Append and
+// verify hash the same json.Marshal bytes. encoding/json is not
+// round-trip stable for invalid UTF-8.
+func canonicalizeEvent(e *Event) {
+	e.Timestamp = validUTF8(e.Timestamp)
+	e.EventType = validUTF8(e.EventType)
+	e.ReasonCode = validUTF8(e.ReasonCode)
+	e.Txn = validUTF8(e.Txn)
+	e.JTI = validUTF8(e.JTI)
+	e.AgentID = validUTF8(e.AgentID)
+	e.Workload = validUTF8(e.Workload)
+	e.Principal = validUTF8(e.Principal)
+	e.Audience = validUTF8(e.Audience)
+	e.Scope = validUTF8(e.Scope)
+	e.Hash = validUTF8(e.Hash)
+	e.PrevHash = validUTF8(e.PrevHash)
+	if len(e.Hops) > 0 {
+		hops := make([]string, len(e.Hops))
+		for i, h := range e.Hops {
+			hops[i] = validUTF8(h)
+		}
+		e.Hops = hops
+	}
+}
+
+func validUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	return strings.ToValidUTF8(s, "\uFFFD")
+}
+
 // Append writes e, filling hash-chain fields, and Syncs the file.
 func (l *Logger) Append(e Event) error {
 	l.mu.Lock()
@@ -179,6 +214,7 @@ func (l *Logger) Append(e Event) error {
 	if l.poisoned || l.file == nil {
 		return ErrUnhealthy
 	}
+	canonicalizeEvent(&e)
 	if e.Timestamp == "" {
 		e.Timestamp = l.now().Format(time.RFC3339Nano)
 	}

@@ -180,8 +180,10 @@ from genesis; any non-audit line is a break. Only `-visor` may be
 generic JSONL. Operators look up a stolen token by minted `jti`
 (`trace -jti`) or by `txn` (`trace -txn`); jti→txn is taken from
 verified records, and a jti query returns that transaction. Once a
-subject JWT verifies, denials carry that `txn`/`jti`. The hash chain
-is not a MAC: tail truncation, an empty file, and a fully recomputed
+subject JWT verifies, denials carry that `txn`/`jti`. Hashed Event
+strings are valid UTF-8 (invalid bytes replaced) so Append and reopen
+compute the same payload hash. The hash chain is not a MAC: tail
+truncation, an empty file, and a fully recomputed
 log are not detected. Planned signing-key rotation still waits
 `KeyRetirementWait`; compromise recovery removes the burned kid as
 soon as the replacement is active. A visor-gateway `-jwks` file copy
