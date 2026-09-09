@@ -136,8 +136,9 @@ in `-dpop-replay` through `iat + ClockSkew`, namespaced (`dpop:` prefix)
 so they cannot collide with STS subject-token jtis if a process shares
 a consume map. Unprefixed proof jtis from an earlier log are still
 treated as occupied until they expire. Missing `cnf`, missing or
-invalid DPoP, or a replayed proof is 401 with no backend. This is not
-a DPoP nonce deployment and not a Production identity plane.
+invalid DPoP, or a replayed proof is 401 with no backend. Resource proofs
+require a server-issued `nonce` (`use_dpop_nonce`, AI22). This is not
+a Production identity plane.
 
 ## Incident reconstruction (v0.7)
 
@@ -150,7 +151,7 @@ from verified records and returns that transaction's hops. Hashed
 Event strings are valid UTF-8 and length-bounded. The chain is not a MAC (tail
 truncation, empty file, and a fully recomputed log are not detected). Key-compromise steps are in [runbooks.md](runbooks.md),
 including regenerating a visor-gateway `-jwks` file copy. This is not
-Production (no DPoP nonce).
+Production.
 
 ## visor-session (v0.8)
 
@@ -163,5 +164,16 @@ loopback `http`; no query or fragment). Redirects are not followed.
 On Unix the process is replaced by visor; `AIP_ACCESS_TOKEN` is not
 inherited (case-insensitive). Exec is Unix-only. `-dpop-key` is a 0600 Ed25519
 file. Starting visor by hand with a typed `--client-id` is still
-spoofable; this command is the supported authentic path. This is not a
-DPoP nonce deployment and not a Production identity plane.
+spoofable; this command is the supported authentic path. visor-session
+retries once on `use_dpop_nonce`. This is not a Production identity plane.
+
+## DPoP nonce (v0.9)
+
+visor-gateway requires an RFC 9449 `nonce` claim on resource DPoP proofs.
+It issues unguessable, single-use, process-local nonces (`DPoP-Nonce`)
+on DPoP 401s and on allow. Missing or unknown nonce is 401 with
+`WWW-Authenticate` `error="use_dpop_nonce"`. The nonce is checked before
+proof-jti consume. visor-session and the A2A tripper retry once.
+Restart forgets issued nonces, so a captured proof cannot be replayed
+from a lost `-dpop-replay` log. STS `POST /oauth/token` does not require
+a nonce. This is not a Production identity plane.

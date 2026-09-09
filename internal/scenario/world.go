@@ -200,11 +200,16 @@ func (w *World) HappyPath() (oncallTok, investTok string, err error) {
 
 // Prove signs a DPoP proof with the named workload key.
 func (w *World) Prove(workload, method, htu, accessToken string) (string, error) {
+	return w.ProveNonce(workload, method, htu, accessToken, "")
+}
+
+// ProveNonce is Prove with an RFC 9449 nonce claim.
+func (w *World) ProveNonce(workload, method, htu, accessToken, nonce string) (string, error) {
 	kf, ok := w.WL[workload]
 	if !ok {
 		return "", errUnknownWorkload
 	}
-	return dpop.Prove(kf, method, htu, accessToken, w.Now)
+	return dpop.ProveWithNonce(kf, method, htu, accessToken, w.Now, nonce)
 }
 
 func short(id string) string {

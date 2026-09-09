@@ -170,8 +170,8 @@ cannot occupy a minted subject-token jti. Unprefixed proof jtis already
 in the log remain occupied until expiry. The DPoP header JWK must be a public key. Missing
 `cnf`, missing DPoP, invalid proof, or replay is denied with no
 backend forward. `-dpop-replay` must not alias other exclusive
-identity files. This is not a DPoP nonce deployment and not a
-Production claim.
+identity files. Resource proofs require a server-issued `nonce` (AI22).
+This is not a Production claim.
 
 ## AI20 — Incident reconstruction verifies the audit hash chain
 
@@ -220,6 +220,17 @@ key or keyring file. `-print` prints argv and does not exec. Starting
 command is the supported authentic path. On Unix, `visor-session`
 replaces itself with visor so SIGTERM hits visor, and the visor
 environment does not inherit `AIP_ACCESS_TOKEN` (name match is
-case-insensitive). Exec is Unix-only (`-print` still works). This is not a DPoP nonce
-deployment and not a Production claim.
+case-insensitive). Exec is Unix-only (`-print` still works). visor-session
+retries once on `use_dpop_nonce` (AI22). This is not a Production claim.
+
+## AI22 — visor-gateway requires a DPoP nonce
+
+visor-gateway issues unguessable, single-use, process-local DPoP nonces
+(`DPoP-Nonce`). A resource-server proof must include that `nonce` claim.
+Missing or unknown nonce is 401 with `WWW-Authenticate` `error="use_dpop_nonce"`
+and a fresh `DPoP-Nonce`. The nonce is checked before proof-jti consume so a
+first request without a nonce does not burn `jti`. visor-session and the A2A
+tripper retry once on that challenge. Restart forgets issued nonces, so a
+captured proof cannot be replayed from a lost `-dpop-replay` log. STS
+`POST /oauth/token` does not require a nonce. This is not a Production claim.
 

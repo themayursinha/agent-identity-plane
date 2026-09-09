@@ -203,23 +203,9 @@ func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	clone.Header.Set("Authorization", scheme+" "+res.Token)
 	if t.ProofKey != nil {
-		kf, err := t.ProofKey(req.Context())
-		if err != nil {
+		if err := t.setProof(clone, res.Token, ""); err != nil {
 			return nil, err
 		}
-		htu, err := dpop.OutboundURI(clone)
-		if err != nil {
-			return nil, err
-		}
-		now := time.Now().UTC()
-		if t.Now != nil {
-			now = t.Now()
-		}
-		proof, err := dpop.Prove(kf, clone.Method, htu, res.Token, now)
-		if err != nil {
-			return nil, err
-		}
-		clone.Header.Set("DPoP", proof)
 	}
 	if clone.Body != nil && req.Body != nil && req.GetBody != nil {
 		b, _ := req.GetBody()
@@ -227,7 +213,50 @@ func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	} else if req.Body != nil && clone.Body == nil {
 		clone.Body = io.NopCloser(bytes.NewReader(nil))
 	}
-	return base.RoundTrip(clone)
+	resp, err := base.RoundTrip(clone)
+	if err != nil || t.ProofKey == nil || resp == nil {
+		return resp, err
+	}
+	nonce := dpop.NonceFromChallenge(resp)
+	if nonce == "" {
+		return resp, nil
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	retry := req.Clone(req.Context())
+	retry.Header.Set("Authorization", scheme+" "+res.Token)
+	if err := t.setProof(retry, res.Token, nonce); err != nil {
+		return nil, err
+	}
+	if req.GetBody != nil {
+		b, err := req.GetBody()
+		if err != nil {
+			return nil, err
+		}
+		retry.Body = b
+	}
+	return base.RoundTrip(retry)
+}
+
+func (t *Tripper) setProof(req *http.Request, accessToken, nonce string) error {
+	kf, err := t.ProofKey(req.Context())
+	if err != nil {
+		return err
+	}
+	htu, err := dpop.OutboundURI(req)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	if t.Now != nil {
+		now = t.Now()
+	}
+	proof, err := dpop.ProveWithNonce(kf, req.Method, htu, accessToken, now, nonce)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("DPoP", proof)
+	return nil
 }
 
 // Middleware verifies a Bearer token for audience and stores the chain.

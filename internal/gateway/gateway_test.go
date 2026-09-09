@@ -42,6 +42,10 @@ func replay(w *scenario.World) *sts.ReplayCache {
 }
 
 func pepReq(t *testing.T, w *scenario.World, method, path, tok, workload string) *http.Request {
+	return pepReqNonce(t, w, method, path, tok, workload, "")
+}
+
+func pepReqNonce(t *testing.T, w *scenario.World, method, path, tok, workload, nonce string) *http.Request {
 	t.Helper()
 	req := httptest.NewRequest(method, path, nil)
 	req.Host = "visor-gateway.test"
@@ -50,12 +54,37 @@ func pepReq(t *testing.T, w *scenario.World, method, path, tok, workload string)
 	if err != nil {
 		t.Fatal(err)
 	}
-	proof, err := w.Prove(workload, method, htu, tok)
+	proof, err := w.ProveNonce(workload, method, htu, tok, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.Header.Set("DPoP", proof)
 	return req
+}
+
+func pepServe(t *testing.T, h http.Handler, w *scenario.World, method, path, tok, workload string) *httptest.ResponseRecorder {
+	return pepServeMut(t, h, w, method, path, tok, workload, nil)
+}
+
+func pepServeMut(t *testing.T, h http.Handler, w *scenario.World, method, path, tok, workload string, mutate func(*http.Request)) *httptest.ResponseRecorder {
+	t.Helper()
+	req := pepReq(t, w, method, path, tok, workload)
+	if mutate != nil {
+		mutate(req)
+	}
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, req)
+	nonce := dpop.NonceFromChallenge(rw.Result())
+	if nonce == "" {
+		return rw
+	}
+	req2 := pepReqNonce(t, w, method, path, tok, workload, nonce)
+	if mutate != nil {
+		mutate(req2)
+	}
+	rw2 := httptest.NewRecorder()
+	h.ServeHTTP(rw2, req2)
+	return rw2
 }
 
 func TestIdentityOnlyGateway(t *testing.T) {
@@ -74,11 +103,12 @@ func TestIdentityOnlyGateway(t *testing.T) {
 		ProofReplay:  replay(w),
 	}
 	h := cfg.Handler()
-	req := pepReq(t, w, http.MethodPost, "/session", tok, scenario.WLInvest)
-	rw := httptest.NewRecorder()
-	h.ServeHTTP(rw, req)
+	rw := pepServe(t, h, w, http.MethodPost, "/session", tok, scenario.WLInvest)
 	if rw.Code != 200 {
 		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	}
+	if rw.Header().Get(dpop.NonceHeader) == "" {
+		t.Fatal("missing DPoP-Nonce on allow")
 	}
 	if got := rw.Header().Get("X-Visor-Client-Id"); got != "investigation" {
 		t.Fatalf("client-id %s", got)
@@ -106,10 +136,9 @@ func TestGatewayAcceptsDPoPAuthorization(t *testing.T) {
 		ShortName:    true,
 		ProofReplay:  replay(w),
 	}
-	req := pepReq(t, w, http.MethodPost, "/session", tok, scenario.WLInvest)
-	req.Header.Set("Authorization", "DPoP "+tok)
-	rw := httptest.NewRecorder()
-	cfg.Handler().ServeHTTP(rw, req)
+	rw := pepServeMut(t, cfg.Handler(), w, http.MethodPost, "/session", tok, scenario.WLInvest, func(req *http.Request) {
+		req.Header.Set("Authorization", "DPoP "+tok)
+	})
 	if rw.Code != 200 {
 		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
 	}
@@ -128,9 +157,7 @@ func TestGatewayDefaultClientIDIsFullActorURI(t *testing.T) {
 		IdentityOnly: true,
 		ProofReplay:  replay(w),
 	}
-	req := pepReq(t, w, http.MethodPost, "/session", tok, scenario.WLInvest)
-	rw := httptest.NewRecorder()
-	cfg.Handler().ServeHTTP(rw, req)
+	rw := pepServe(t, cfg.Handler(), w, http.MethodPost, "/session", tok, scenario.WLInvest)
 	if rw.Code != 200 {
 		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
 	}
@@ -204,11 +231,10 @@ func TestGatewayOverwritesSpoofedVisorHeaders(t *testing.T) {
 		ShortName:   true,
 		ProofReplay: replay(w),
 	}
-	req := pepReq(t, w, http.MethodPost, "/mcp", tok, scenario.WLInvest)
-	req.Header.Set("X-Visor-Client-Id", "spoofed")
-	req.Header.Set("Connection", "X-Visor-Client-Id, X-Visor-Session-Id, X-Actor-Chain")
-	rw := httptest.NewRecorder()
-	cfg.Handler().ServeHTTP(rw, req)
+	rw := pepServeMut(t, cfg.Handler(), w, http.MethodPost, "/mcp", tok, scenario.WLInvest, func(req *http.Request) {
+		req.Header.Set("X-Visor-Client-Id", "spoofed")
+		req.Header.Set("Connection", "X-Visor-Client-Id, X-Visor-Session-Id, X-Actor-Chain")
+	})
 	if rw.Code != 200 {
 		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
 	}
@@ -243,9 +269,7 @@ func TestGatewayStripsBackendMappingSignals(t *testing.T) {
 		Backend:     u,
 		ProofReplay: replay(w),
 	}
-	req := pepReq(t, w, http.MethodPost, "/mcp", tok, scenario.WLInvest)
-	rw := httptest.NewRecorder()
-	cfg.Handler().ServeHTTP(rw, req)
+	rw := pepServe(t, cfg.Handler(), w, http.MethodPost, "/mcp", tok, scenario.WLInvest)
 	if rw.Code != 200 {
 		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
 	}
@@ -707,6 +731,9 @@ func TestGatewayRejectsMissingDPoP(t *testing.T) {
 	if got := rw.Header().Get("WWW-Authenticate"); !strings.Contains(got, "DPoP") {
 		t.Fatalf("WWW-Authenticate %q", got)
 	}
+	if rw.Header().Get(dpop.NonceHeader) == "" {
+		t.Fatal("missing DPoP-Nonce on DPoP 401")
+	}
 }
 
 func TestGatewayDPoPDenyRecordsJTI(t *testing.T) {
@@ -836,6 +863,44 @@ func TestGatewayRejectsWrongDPoPKey(t *testing.T) {
 	}
 }
 
+func TestGatewayRequiresDPoPNonce(t *testing.T) {
+	w := testWorld(t)
+	_, tok, err := w.HappyPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &gateway.Config{
+		Audience:     scenario.Gateway,
+		Verifier:     w.Verifier,
+		Audit:        w.STS.Audit,
+		IdentityOnly: true,
+		ProofReplay:  replay(w),
+	}
+	h := cfg.Handler()
+	req := pepReq(t, w, http.MethodPost, "/session", tok, scenario.WLInvest)
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, req)
+	if rw.Code != http.StatusUnauthorized {
+		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), "nonce") {
+		t.Fatalf("body %s", rw.Body.String())
+	}
+	if got := rw.Header().Get("WWW-Authenticate"); !strings.Contains(got, `error="use_dpop_nonce"`) {
+		t.Fatalf("WWW-Authenticate %q", got)
+	}
+	nonce := dpop.NonceFromChallenge(rw.Result())
+	if nonce == "" {
+		t.Fatal("missing nonce challenge")
+	}
+	req2 := pepReqNonce(t, w, http.MethodPost, "/session", tok, scenario.WLInvest, nonce)
+	rw2 := httptest.NewRecorder()
+	h.ServeHTTP(rw2, req2)
+	if rw2.Code != 200 {
+		t.Fatalf("retry status %d %s", rw2.Code, rw2.Body.String())
+	}
+}
+
 func TestGatewayRejectsReplayedDPoP(t *testing.T) {
 	w := testWorld(t)
 	_, tok, err := w.HappyPath()
@@ -849,20 +914,66 @@ func TestGatewayRejectsReplayedDPoP(t *testing.T) {
 		IdentityOnly: true,
 		ProofReplay:  replay(w),
 	}
-	req := pepReq(t, w, http.MethodPost, "/session", tok, scenario.WLInvest)
+	h := cfg.Handler()
+	challenge := pepReq(t, w, http.MethodPost, "/session", tok, scenario.WLInvest)
 	rw := httptest.NewRecorder()
-	cfg.Handler().ServeHTTP(rw, req)
-	if rw.Code != 200 {
-		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	h.ServeHTTP(rw, challenge)
+	nonce := dpop.NonceFromChallenge(rw.Result())
+	if nonce == "" {
+		t.Fatalf("challenge %d %s", rw.Code, rw.Body.String())
+	}
+	req := pepReqNonce(t, w, http.MethodPost, "/session", tok, scenario.WLInvest, nonce)
+	rw2 := httptest.NewRecorder()
+	h.ServeHTTP(rw2, req)
+	if rw2.Code != 200 {
+		t.Fatalf("status %d %s", rw2.Code, rw2.Body.String())
 	}
 	req2 := httptest.NewRequest(http.MethodPost, "/session", nil)
 	req2.Host = req.Host
 	req2.Header.Set("Authorization", "Bearer "+tok)
 	req2.Header.Set("DPoP", req.Header.Get("DPoP"))
+	rw3 := httptest.NewRecorder()
+	h.ServeHTTP(rw3, req2)
+	if rw3.Code != http.StatusUnauthorized {
+		t.Fatalf("replay status %d %s", rw3.Code, rw3.Body.String())
+	}
+	if !strings.Contains(rw3.Body.String(), "nonce") &&
+		!strings.Contains(rw3.Body.String(), "already") {
+		t.Fatalf("body %s", rw3.Body.String())
+	}
+}
+
+func TestGatewayRejectsReplayedDPoPJTI(t *testing.T) {
+	w := testWorld(t)
+	_, tok, err := w.HappyPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := replay(w)
+	cfg := &gateway.Config{
+		Audience:     scenario.Gateway,
+		Verifier:     w.Verifier,
+		Audit:        w.STS.Audit,
+		IdentityOnly: true,
+		ProofReplay:  cache,
+	}
+	h := cfg.Handler()
+	challenge := pepReq(t, w, http.MethodPost, "/session", tok, scenario.WLInvest)
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, challenge)
+	nonce := dpop.NonceFromChallenge(rw.Result())
+	if nonce == "" {
+		t.Fatalf("challenge %d %s", rw.Code, rw.Body.String())
+	}
+	req := pepReqNonce(t, w, http.MethodPost, "/session", tok, scenario.WLInvest, nonce)
+	jti, iat := proofJTI(t, req.Header.Get("DPoP"))
+	if err := cache.Consume(dpop.ReplayJTI(jti), iat, jti); err != nil {
+		t.Fatal(err)
+	}
 	rw2 := httptest.NewRecorder()
-	cfg.Handler().ServeHTTP(rw2, req2)
+	h.ServeHTTP(rw2, req)
 	if rw2.Code != http.StatusUnauthorized {
-		t.Fatalf("replay status %d %s", rw2.Code, rw2.Body.String())
+		t.Fatalf("status %d %s", rw2.Code, rw2.Body.String())
 	}
 	if !strings.Contains(rw2.Body.String(), gateway.ReasonReplayedDPoP) && !strings.Contains(rw2.Body.String(), "already") {
 		t.Fatalf("body %s", rw2.Body.String())
@@ -875,8 +986,40 @@ func TestGatewayRejectsLegacyUnprefixedProofJTI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := pepReq(t, w, http.MethodPost, "/session", tok, scenario.WLInvest)
-	parts := strings.Split(req.Header.Get("DPoP"), ".")
+	cache := replay(w)
+	cfg := &gateway.Config{
+		Audience:     scenario.Gateway,
+		Verifier:     w.Verifier,
+		Audit:        w.STS.Audit,
+		IdentityOnly: true,
+		ProofReplay:  cache,
+	}
+	h := cfg.Handler()
+	challenge := pepReq(t, w, http.MethodPost, "/session", tok, scenario.WLInvest)
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, challenge)
+	nonce := dpop.NonceFromChallenge(rw.Result())
+	if nonce == "" {
+		t.Fatalf("challenge %d %s", rw.Code, rw.Body.String())
+	}
+	req := pepReqNonce(t, w, http.MethodPost, "/session", tok, scenario.WLInvest, nonce)
+	jti, iat := proofJTI(t, req.Header.Get("DPoP"))
+	if err := cache.Consume(jti, iat); err != nil {
+		t.Fatal(err)
+	}
+	rw2 := httptest.NewRecorder()
+	h.ServeHTTP(rw2, req)
+	if rw2.Code != http.StatusUnauthorized {
+		t.Fatalf("status %d %s", rw2.Code, rw2.Body.String())
+	}
+	if !strings.Contains(rw2.Body.String(), gateway.ReasonReplayedDPoP) && !strings.Contains(rw2.Body.String(), "already") {
+		t.Fatalf("body %s", rw2.Body.String())
+	}
+}
+
+func proofJTI(t *testing.T, proof string) (string, int64) {
+	t.Helper()
+	parts := strings.Split(proof, ".")
 	if len(parts) != 3 {
 		t.Fatal("proof")
 	}
@@ -891,25 +1034,7 @@ func TestGatewayRejectsLegacyUnprefixedProofJTI(t *testing.T) {
 	if err := json.Unmarshal(pb, &pc); err != nil {
 		t.Fatal(err)
 	}
-	cache := replay(w)
-	if err := cache.Consume(pc.JTI, pc.IAT); err != nil {
-		t.Fatal(err)
-	}
-	cfg := &gateway.Config{
-		Audience:     scenario.Gateway,
-		Verifier:     w.Verifier,
-		Audit:        w.STS.Audit,
-		IdentityOnly: true,
-		ProofReplay:  cache,
-	}
-	rw := httptest.NewRecorder()
-	cfg.Handler().ServeHTTP(rw, req)
-	if rw.Code != http.StatusUnauthorized {
-		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
-	}
-	if !strings.Contains(rw.Body.String(), gateway.ReasonReplayedDPoP) && !strings.Contains(rw.Body.String(), "already") {
-		t.Fatalf("body %s", rw.Body.String())
-	}
+	return pc.JTI, pc.IAT
 }
 
 func TestGatewayIgnoresForwardedProtoForHTU(t *testing.T) {

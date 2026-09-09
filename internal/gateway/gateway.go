@@ -37,6 +37,7 @@ const (
 	ReasonReplayedDPoP = "replayed_dpop"
 	ReasonMissingCNF   = "missing_cnf"
 	ReasonDPoPUnavail  = "dpop_unavailable"
+	ReasonUseNonce     = "use_dpop_nonce"
 )
 
 const (
@@ -66,10 +67,12 @@ type Config struct {
 	TLSKeyFile   string
 	DenylistFn   func() (*denylist.List, error)
 	ProofReplay  *sts.ReplayCache
+	Nonces       *dpop.NonceCache
 	Metrics      Metrics
 
-	limiter *tokenBucket
-	once    sync.Once
+	limiter   *tokenBucket
+	once      sync.Once
+	nonceOnce sync.Once
 }
 
 func (c *Config) initLimiter() {
@@ -80,9 +83,31 @@ func (c *Config) initLimiter() {
 	})
 }
 
+func (c *Config) initNonces() {
+	c.nonceOnce.Do(func() {
+		if c.Nonces == nil {
+			now := func() time.Time { return time.Now().UTC() }
+			if c.Verifier != nil && c.Verifier.Now != nil {
+				now = c.Verifier.Now
+			}
+			c.Nonces = dpop.NewNonceCache(now)
+		}
+	})
+}
+
+func (c *Config) issueNonce() string {
+	c.initNonces()
+	now := time.Now().UTC()
+	if c.Verifier != nil && c.Verifier.Now != nil {
+		now = c.Verifier.Now()
+	}
+	return c.Nonces.Issue(now)
+}
+
 // Handler serves health, ready, metrics, and the identity PEP.
 func (c *Config) Handler() http.Handler {
 	c.initLimiter()
+	c.initNonces()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -186,6 +211,9 @@ func (c *Config) handlePEP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.Metrics.Allowed.Add(1)
+	if n := c.issueNonce(); n != "" {
+		w.Header().Set(dpop.NonceHeader, n)
+	}
 	applyIdentityHeaders(w.Header(), m)
 	if c.IdentityOnly || c.Backend == nil {
 		w.Header().Set("Content-Type", visoradapter.MappingContentType)
@@ -275,6 +303,11 @@ func (c *Config) requireDPoP(w http.ResponseWriter, r *http.Request, accessToken
 		c.writeDenyDPoP(w, http.StatusUnauthorized, ReasonInvalidDPoP, err.Error(), m)
 		return err
 	}
+	c.initNonces()
+	if !c.Nonces.Has(proof.Nonce, now) {
+		c.writeDenyDPoP(w, http.StatusUnauthorized, ReasonUseNonce, "dpop nonce required", m)
+		return errors.New(ReasonUseNonce)
+	}
 	if err := c.ProofReplay.Consume(dpop.ReplayJTI(proof.JTI), proof.IAT, proof.JTI); err != nil {
 		if errors.Is(err, sts.ErrReplay) {
 			c.writeDenyDPoP(w, http.StatusUnauthorized, ReasonReplayedDPoP, "dpop proof jti already used", m)
@@ -283,11 +316,24 @@ func (c *Config) requireDPoP(w http.ResponseWriter, r *http.Request, accessToken
 		c.writeDenyDPoP(w, http.StatusServiceUnavailable, ReasonDPoPUnavail, err.Error(), m)
 		return err
 	}
+	if !c.Nonces.Consume(proof.Nonce, now) {
+		c.writeDenyDPoP(w, http.StatusUnauthorized, ReasonUseNonce, "dpop nonce required", m)
+		return errors.New(ReasonUseNonce)
+	}
 	return nil
 }
 
 func (c *Config) writeDenyDPoP(w http.ResponseWriter, status int, reason, desc string, m *visoradapter.Mapping) {
-	w.Header().Set("WWW-Authenticate", `DPoP algs="EdDSA ES256 RS256"`)
+	auth := `DPoP algs="EdDSA ES256 RS256"`
+	if reason == ReasonUseNonce {
+		auth = `DPoP error="use_dpop_nonce", algs="EdDSA ES256 RS256"`
+	}
+	w.Header().Set("WWW-Authenticate", auth)
+	if status == http.StatusUnauthorized {
+		if n := c.issueNonce(); n != "" {
+			w.Header().Set(dpop.NonceHeader, n)
+		}
+	}
 	c.writeDeny(w, status, reason, desc, m)
 }
 

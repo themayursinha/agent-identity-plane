@@ -1,4 +1,4 @@
-# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist, v0.6 DPoP, v0.7 trace, v0.8 visor-session)
+# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist, v0.6 DPoP, v0.7 trace, v0.8 visor-session, v0.9 DPoP nonce)
 
 This is an operable single-node STS, not a production identity plane.
 Loopback binds and fail-closed minting still apply. Incident procedures
@@ -145,7 +145,7 @@ a `-backend` body is not a mapping. `-dpop-key` is mode `0600`.
 `-token` or `AIP_ACCESS_TOKEN`. On Unix the process is replaced by
 visor, and `AIP_ACCESS_TOKEN` is stripped from visor's environment
 (case-insensitive name). Exec is Unix-only. Typing `mcp-visor serve -client-id …`
-by hand is still spoofable. There is no DPoP nonce.
+by hand is still spoofable. visor-session retries once on `use_dpop_nonce`.
 
 ## Denylist
 
@@ -182,8 +182,12 @@ outbound URL scheme and `Host` (then `URL.Host`). `RoundTrip` still has
 `cnf.jkt` is a workload key, not the SPIFFE issuer key.
 `token_type` is `DPoP`; visor-gateway and the A2A tripper accept
 `Authorization: DPoP` or `Bearer` plus the `DPoP` proof header.
-There is no DPoP nonce. STS `POST /oauth/token` still uses
-`actor_token` as the grant, not DPoP as the credential.
+Resource proofs at visor-gateway must include a server-issued `nonce`
+claim. Missing or unknown nonce is 401 `use_dpop_nonce` with `DPoP-Nonce`.
+Nonces are unguessable, single-use, and process-local (restart
+invalidates them). visor-session and the A2A tripper retry once.
+STS `POST /oauth/token` still uses `actor_token` as the grant, not DPoP
+as the credential, and does not require a nonce.
 
 ## Live JWT-SVID JWKS
 

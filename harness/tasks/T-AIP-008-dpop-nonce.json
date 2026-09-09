@@ -1,0 +1,21 @@
+{
+  "task_id": "T-AIP-008-dpop-nonce",
+  "invariant_ids": ["AI19", "AI22"],
+  "security_sensitive": true,
+  "security_problem": "Without a DPoP nonce, an intercepted visor-gateway proof can race the first jti consume, or be replayed if -dpop-replay is lost before iat+ClockSkew. A first request without a nonce must not burn that jti.",
+  "required_behavior": "visor-gateway requires a server-issued nonce claim on resource DPoP proofs. Missing or unknown nonce is HTTP 401 with WWW-Authenticate error=use_dpop_nonce and a DPoP-Nonce header. Nonces are unguessable, single-use, and process-local (restart forgets them). The nonce is checked before proof-jti consume. visor-session and the A2A tripper retry once on that challenge. STS POST /oauth/token does not require a nonce. This is not Production.",
+  "failure_behavior": "Fail closed: unknown nonce, consumed nonce, and missing nonce are 401 with no backend forward. A captured proof cannot be replayed after process restart from a lost -dpop-replay log.",
+  "max_attempts": 3,
+  "required_commands": [
+    {
+      "name": "target_test",
+      "expect": "pass",
+      "argv": ["go", "test", "./internal/dpop/...", "./internal/gateway/...", "./internal/a2a/...", "./internal/visorsession/...", "-count", "1"]
+    },
+    {
+      "name": "harness",
+      "expect": "pass",
+      "argv": ["harness/check.sh"]
+    }
+  ]
+}

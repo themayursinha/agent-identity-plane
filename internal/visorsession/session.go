@@ -112,7 +112,8 @@ func LoadProofKey(path string) (*token.KeyFile, error) {
 }
 
 // Fetch POSTs to visor-gateway with Authorization DPoP and a DPoP proof
-// and returns the verified mapping. It does not exec visor.
+// and returns the verified mapping. It does not exec visor. A 401
+// use_dpop_nonce challenge is retried once with the issued nonce.
 func Fetch(ctx context.Context, req Request) (visoradapter.Mapping, error) {
 	var zero visoradapter.Mapping
 	if ctx == nil {
@@ -127,57 +128,73 @@ func Fetch(ctx context.Context, req Request) (visoradapter.Mapping, error) {
 	if err := CheckGatewayURL(req.GatewayURL); err != nil {
 		return zero, err
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, req.GatewayURL, nil)
-	if err != nil {
-		return zero, err
-	}
-	htu, err := dpop.OutboundURI(httpReq)
-	if err != nil {
-		return zero, err
-	}
 	now := time.Now().UTC()
 	if req.Now != nil {
 		now = req.Now()
 	}
-	proof, err := dpop.Prove(req.ProofKey, http.MethodPost, htu, req.Token, now)
-	if err != nil {
+	m, challenge, err := fetchMapping(ctx, req, now, "")
+	if err == nil {
+		return m, nil
+	}
+	if challenge == "" {
 		return zero, err
+	}
+	m, _, err = fetchMapping(ctx, req, now, challenge)
+	return m, err
+}
+
+func fetchMapping(ctx context.Context, req Request, now time.Time, nonce string) (visoradapter.Mapping, string, error) {
+	var zero visoradapter.Mapping
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, req.GatewayURL, nil)
+	if err != nil {
+		return zero, "", err
+	}
+	htu, err := dpop.OutboundURI(httpReq)
+	if err != nil {
+		return zero, "", err
+	}
+	proof, err := dpop.ProveWithNonce(req.ProofKey, http.MethodPost, htu, req.Token, now, nonce)
+	if err != nil {
+		return zero, "", err
 	}
 	httpReq.Header.Set("Authorization", "DPoP "+req.Token)
 	httpReq.Header.Set("DPoP", proof)
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
-		return zero, err
+		return zero, "", err
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxMappingBytes+1))
 	if err != nil {
-		return zero, err
+		return zero, "", err
 	}
 	if len(raw) > maxMappingBytes {
-		return zero, ErrBody
+		return zero, "", ErrBody
 	}
 	if resp.StatusCode != http.StatusOK {
-		return zero, fmt.Errorf("visorsession: gateway status %d", resp.StatusCode)
+		if n := dpop.NonceFromChallenge(resp); n != "" && nonce == "" {
+			return zero, n, fmt.Errorf("visorsession: gateway status %d", resp.StatusCode)
+		}
+		return zero, "", fmt.Errorf("visorsession: gateway status %d", resp.StatusCode)
 	}
 	if !isMappingContentType(resp.Header.Get("Content-Type")) {
-		return zero, fmt.Errorf("%w: response is not an identity-only mapping", ErrMapping)
+		return zero, "", fmt.Errorf("%w: response is not an identity-only mapping", ErrMapping)
 	}
 	var m visoradapter.Mapping
 	if err := jsonutil.Unmarshal(raw, &m); err != nil {
-		return zero, fmt.Errorf("%w: %v", ErrMapping, err)
+		return zero, "", fmt.Errorf("%w: %v", ErrMapping, err)
 	}
 	if err := m.Complete(); err != nil {
-		return zero, fmt.Errorf("%w: %v", ErrMapping, err)
+		return zero, "", fmt.Errorf("%w: %v", ErrMapping, err)
 	}
 	if resp.Header.Get(visoradapter.HeaderClientID) != m.ClientID ||
 		resp.Header.Get(visoradapter.HeaderSessionID) != m.SessionID {
-		return zero, fmt.Errorf("%w: visor identity headers do not match mapping", ErrMapping)
+		return zero, "", fmt.Errorf("%w: visor identity headers do not match mapping", ErrMapping)
 	}
 	if err := mappingAgreesWithToken(m, req.Token); err != nil {
-		return zero, err
+		return zero, "", err
 	}
-	return m, nil
+	return m, "", nil
 }
 
 // RejectIdentityArgs fails closed if extra visor arguments set client-id
