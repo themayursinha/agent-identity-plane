@@ -11,7 +11,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
 
-var version = "v0.6.0"
+var version = "v0.7.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -76,7 +76,7 @@ Commands:
   registry lint FILE    Strict-decode and validate a registry JSON file
   token inspect TOKEN   Decode a JWT without verifying the signature
   token verify ...      Verify a JWT against a JWKS and audience
-  trace                 Reconstruct a txn from STS and visor JSONL logs
+  trace                 Reconstruct a txn or minted jti from STS and visor JSONL logs
   keys generate         Write a new Ed25519 key file
   demo                  Run the multi-hop scenario and attack cases
   version               Print the version
