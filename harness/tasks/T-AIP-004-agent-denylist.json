@@ -3,8 +3,8 @@
   "invariant_ids": ["AI8", "AI14", "AI16", "AI18"],
   "security_sensitive": true,
   "security_problem": "A registered agent that is later subverted can keep minting until TTL/depth/scope stop it. Removing the registry row is not the same as an explicit revocation signal, and already-minted next-hop tokens can still pass visor-gateway. Short-name matching would revoke the wrong agent.",
-  "required_behavior": "serve and visor-gateway require -denylist (empty lists are valid). IDs match exactly. STS denies agent_id, attested workload, and verified principal when listed (agent_denied / workload_denied / principal_denied) and issues no token. visor-gateway denies the principal, acting agent, and every non-principal hop before any backend forward. SIGHUP loads registry, keys, and denylist then publishes one snapshot; an invalid denylist keeps the previous snapshot. visor-gateway re-reads the denylist on each verify.",
-  "failure_behavior": "Fail closed: unknown fields, trailing JSON, empty IDs, duplicate IDs, non-URI agent/workload entries, aliased identity-file paths, and an unreadable denylist produce a process error or HTTP 503 with no mint and no backend forward.",
+  "required_behavior": "serve and visor-gateway require -denylist (empty lists are valid). IDs match exactly. Agent and workload entries must be parseable URIs with a scheme and host. STS denies agent_id, attested workload, and verified principal when listed (agent_denied / workload_denied / principal_denied) and issues no token. visor-gateway denies the principal, acting agent, and every hop after the principal position (later hops are agents even if their URI equals sub) before any backend forward. SIGHUP loads registry, keys, and denylist then publishes one snapshot; an invalid denylist keeps the previous snapshot. visor-gateway re-reads the denylist on each verify.",
+  "failure_behavior": "Fail closed: unknown fields, trailing JSON, empty IDs, duplicate IDs, unparseable agent/workload URIs, aliased identity-file paths, and an unreadable denylist produce a process error or HTTP 503 with no mint and no backend forward.",
   "max_attempts": 3,
   "required_commands": [
     {

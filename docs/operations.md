@@ -111,11 +111,13 @@ for a stdio visor process; visor stdio is not an HTTP backend.
 ```
 
 IDs match exactly. Last-segment short names are not identifiers.
+Agent and workload IDs must be parseable URIs with a scheme and host.
 `serve` checks agent, attested workload, and verified principal at
 mint. visor-gateway re-reads the file on each request and denies if
-the principal, acting agent, or any other hop is listed, so in-flight
-tokens stop without waiting for TTL. Invalid documents fail closed
-(serve keeps the previous snapshot on SIGHUP). This is not DPoP.
+the principal, acting agent, or any hop after the principal position
+is listed (later hops are agents even if their URI equals `sub`).
+Invalid documents fail closed (serve keeps the previous snapshot on
+SIGHUP). This is not DPoP.
 
 ## Live JWT-SVID JWKS
 

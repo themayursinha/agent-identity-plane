@@ -3,6 +3,7 @@ package denylist
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -88,13 +89,24 @@ func indexURI(dst map[string]struct{}, ids []string, kind string) error {
 		if strings.TrimSpace(id) == "" || id != strings.TrimSpace(id) {
 			return fmt.Errorf("%w: %s", ErrEmptyID, kind)
 		}
-		if !strings.Contains(id, "://") {
+		if err := identityURI(id); err != nil {
 			return fmt.Errorf("%w: %s id must be a URI: %s", ErrInvalid, kind, id)
 		}
 		if _, ok := dst[id]; ok {
 			return fmt.Errorf("%w: %s %s", ErrDuplicate, kind, id)
 		}
 		dst[id] = struct{}{}
+	}
+	return nil
+}
+
+func identityURI(id string) error {
+	if strings.ContainsAny(id, " \t\r\n") {
+		return ErrInvalid
+	}
+	u, err := url.Parse(id)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ErrInvalid
 	}
 	return nil
 }
@@ -159,7 +171,9 @@ func (d *List) DenyExchange(agentID, workload, principal string) string {
 }
 
 // DenyChain is the visor-gateway check: principal, acting agent, and
-// every non-principal hop. Last-segment short names are not identifiers.
+// every agent-position hop. hops[0] is the principal position; later
+// hops are actors even if their URI equals the principal. Last-segment
+// short names are not identifiers.
 func (d *List) DenyChain(principal, acting string, hops []string) string {
 	if d == nil {
 		return ""
@@ -170,8 +184,8 @@ func (d *List) DenyChain(principal, acting string, hops []string) string {
 	if d.HasAgent(acting) {
 		return ReasonAgentDenied
 	}
-	for _, h := range hops {
-		if h == "" || h == principal {
+	for i, h := range hops {
+		if h == "" || i == 0 {
 			continue
 		}
 		if d.HasAgent(h) {

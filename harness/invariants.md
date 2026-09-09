@@ -139,8 +139,9 @@ A configured denylist denies minting when `agent_id`, the attested
 workload, or the verified principal matches an entry exactly
 (trailing slash and last-segment short names are distinct IDs).
 visor-gateway applies the same document on each verify to the
-principal, acting agent, and every non-principal hop, so an
-already-minted chain cannot be forwarded after the hop is listed.
+principal, the acting agent, and every hop after the principal
+position (later hops are agents even if their URI equals `sub`).
+Agent and workload entries must be parseable URIs (scheme and host).
 Owned denylist JSON is strict-decoded. Empty lists are valid.
 Unreadable denylist fails closed. The path must not alias other
 exclusive identity files. This is not DPoP and not a Production claim.

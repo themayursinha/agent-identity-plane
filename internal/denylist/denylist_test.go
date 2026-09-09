@@ -63,10 +63,27 @@ func TestDenyChainInFlightHop(t *testing.T) {
 	}
 }
 
+func TestDenyChainAgentHopEqualsPrincipalURI(t *testing.T) {
+	a := "spiffe://example.test/agent/a"
+	d, err := New(File{Version: 1, Agents: []string{a}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hops := []string{a, a, "spiffe://example.test/agent/b"}
+	if d.DenyChain(a, "spiffe://example.test/agent/b", hops) != ReasonAgentDenied {
+		t.Fatal("agent hop equal to principal URI must still be checked")
+	}
+	if d.HasPrincipal(a) {
+		t.Fatal("agent list must not imply principal denial")
+	}
+}
+
 func TestLoadRejects(t *testing.T) {
 	cases := []string{
 		`{"version":2,"agents":[]}`,
 		`{"version":1,"agents":["oncall"]}`,
+		`{"version":1,"agents":["spiffe ://example.test/agent/a"]}`,
+		`{"version":1,"agents":["://example.test/a"]}`,
 		`{"version":1,"agents":[""]}`,
 		`{"version":1,"agents":["spiffe://a","spiffe://a"]}`,
 		`{"version":1,"agents":[],"extra":true}`,
