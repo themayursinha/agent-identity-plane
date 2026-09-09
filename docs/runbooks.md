@@ -17,9 +17,10 @@ The chain is not a MAC. In-place payload edits fail closed. Truncating
 the tail, emptying the file, or rewriting the whole log with a freshly
 computed chain looks genuine; opening the log appends onto whatever
 suffix remains. Keep the file on integrity-protected storage and copy
-it off-box. Hashed Event strings are valid UTF-8: invalid bytes are
-replaced before hashing so a deny that copied request form fields
-cannot make the log unverifiable.
+it off-box. Hashed Event strings are valid UTF-8 and length-bounded:
+invalid or oversized request fields are replaced/truncated before
+hashing so a deny that copied form fields cannot make the log
+unverifiable.
 
 A stolen compact JWT still carries `jti` and `txn`. Inspect first,
 then reconstruct:

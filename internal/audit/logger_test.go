@@ -103,6 +103,49 @@ func TestAppendInvalidUTF8ReopensAndTraces(t *testing.T) {
 	}
 }
 
+func TestAppendOversizedStringReopensAndTraces(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{
+		EventType:  "token_denied",
+		ReasonCode: "invalid_request",
+		Txn:        "txn-1",
+		JTI:        "jti-1",
+		AgentID:    strings.Repeat("a", 2<<20),
+		Audience:   strings.Repeat("b", 2<<20),
+		Scope:      strings.Repeat("c", 2<<20),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Size() > MaxLineBytes {
+		t.Fatalf("line %d exceeds scanner cap", st.Size())
+	}
+	if _, err := NewLogger(path); err != nil {
+		t.Fatalf("reopen after oversized fields: %v", err)
+	}
+	recs, err := Trace(Query{JTI: "jti-1"}, []string{path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 1 || recs[0].Txn != "txn-1" {
+		t.Fatalf("%+v", recs)
+	}
+	if len(recs[0].AgentID) > maxEventString {
+		t.Fatalf("agent_id len %d", len(recs[0].AgentID))
+	}
+}
+
 func TestRecoverRejectsBrokenHash(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.jsonl")
 	l, err := NewLogger(path)

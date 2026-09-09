@@ -80,7 +80,8 @@ agent denylist; see below.
 hops. `trace -jti JTI` maps jti→txn from verified `-audit` records
 only. `-audit` is always chain-verified; only `-visor` may be generic
 JSONL. The hash chain is not a MAC: tail truncation, an empty file,
-and a fully recomputed log are not detected. See [runbooks.md](runbooks.md).
+and a fully recomputed log are not detected. Hashed Event strings are
+valid UTF-8 and length-bounded so recover can reopen the file. See [runbooks.md](runbooks.md).
 
 ## Endpoints
 

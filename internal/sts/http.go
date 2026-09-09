@@ -15,6 +15,8 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/dpop"
 )
 
+const maxTokenBody = 1 << 20
+
 // ValidateBind rejects unspecified addresses (0.0.0.0, ::, empty host).
 func ValidateBind(addr string) error {
 	host, port, err := net.SplitHostPort(addr)
@@ -96,6 +98,7 @@ func (c *Config) Handler() http.Handler {
 }
 
 func (c *Config) handleToken(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxTokenBody)
 	c.live.RLock()
 	lim := c.limiter
 	c.live.RUnlock()

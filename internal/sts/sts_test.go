@@ -290,6 +290,55 @@ func TestHTTPUnauthenticatedUTF8DoesNotBreakAuditChain(t *testing.T) {
 	}
 }
 
+func TestHTTPUnauthenticatedOversizeDoesNotBreakAuditChain(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	log, err := audit.NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := scenario.NewWorld(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := w.UserToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mint := w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
+	if mint.ReasonCode != sts.ReasonOK {
+		t.Fatal(mint.ReasonCode, mint.ErrorDesc)
+	}
+	ts := httptest.NewServer(w.STS.Handler())
+	t.Cleanup(ts.Close)
+	form := url.Values{}
+	form.Set("grant_type", sts.GrantTokenExchange)
+	form.Set("subject_token", "x")
+	form.Set("actor_token", "y")
+	form.Set("audience", "aud")
+	form.Set("agent_id", strings.Repeat("a", 2<<20))
+	resp, err := http.Post(ts.URL+"/oauth/token", "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Fatal("oversized agent_id must not mint")
+	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := audit.NewLogger(path); err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	recs, err := audit.Trace(audit.Query{JTI: mint.Issued.Jti}, []string{path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) == 0 {
+		t.Fatal("minted hop lost after oversized deny")
+	}
+}
+
 func TestHTTPTokenEndpointProofJTIDoesNotPoisonSubjectReplay(t *testing.T) {
 	w := testWorld(t)
 	ts := httptest.NewServer(w.STS.Handler())

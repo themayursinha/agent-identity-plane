@@ -156,3 +156,40 @@ func TestTraceVisorJTIDoesNotPivotTxn(t *testing.T) {
 		t.Fatalf("%+v", recs)
 	}
 }
+
+func TestTraceOrdersByParsedTimeNotLexical(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sts.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time {
+		return time.Date(2023, 11, 14, 22, 13, 20, 123450000, time.UTC)
+	})
+	if err := l.Append(Event{EventType: "token_minted", ReasonCode: "ok", Txn: "txn-1", JTI: "jti-a"}); err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time {
+		return time.Date(2023, 11, 14, 22, 13, 20, 123456000, time.UTC)
+	})
+	if err := l.Append(Event{EventType: "token_denied", ReasonCode: "replayed_token", Txn: "txn-1", JTI: "jti-a"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = l.Close()
+	recs, err := Trace(Query{Txn: "txn-1"}, []string{path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 2 {
+		t.Fatalf("len %d", len(recs))
+	}
+	if recs[0].EventType != "token_minted" || recs[1].EventType != "token_denied" {
+		t.Fatalf("lexical timestamp sort: %+v", recs)
+	}
+	if recs[0].ChainIndex != 1 || recs[1].ChainIndex != 2 {
+		t.Fatalf("chain %+v", recs)
+	}
+	if recs[0].Timestamp < recs[1].Timestamp {
+		t.Fatalf("test setup: timestamps should invert lexically, got %q < %q", recs[0].Timestamp, recs[1].Timestamp)
+	}
+}

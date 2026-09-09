@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Record is a reconstructed hop from STS and optional visor JSONL.
@@ -27,6 +28,7 @@ type Record struct {
 	SessionID  string   `json:"session_id,omitempty"`
 	Txn        string   `json:"txn,omitempty"`
 	JTI        string   `json:"jti,omitempty"`
+	ChainIndex uint64   `json:"chain_index,omitempty"`
 }
 
 // Query selects records by transaction and/or minted token jti.
@@ -112,9 +114,39 @@ func Trace(q Query, auditPaths []string, visorPaths []string) ([]Record, error) 
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
-		return out[i].Timestamp < out[j].Timestamp
+		return recordLess(out[i], out[j])
 	})
 	return out, nil
+}
+
+func recordLess(a, b Record) bool {
+	ta, tb := parseRecordTime(a.Timestamp), parseRecordTime(b.Timestamp)
+	if !ta.Equal(tb) {
+		if ta.IsZero() != tb.IsZero() {
+			return !ta.IsZero()
+		}
+		return ta.Before(tb)
+	}
+	if a.Verified && b.Verified {
+		if a.Source != b.Source {
+			return a.Source < b.Source
+		}
+		return a.ChainIndex < b.ChainIndex
+	}
+	if a.Verified != b.Verified {
+		return a.Verified
+	}
+	return false
+}
+
+func parseRecordTime(s string) time.Time {
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t
+	}
+	return time.Time{}
 }
 
 func readLines(path string) ([][]byte, error) {
@@ -124,7 +156,7 @@ func readLines(path string) ([][]byte, error) {
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	sc.Buffer(make([]byte, 0, 64*1024), MaxLineBytes)
 	var lines [][]byte
 	for sc.Scan() {
 		line := sc.Bytes()
@@ -187,6 +219,7 @@ func recordFromEvent(path string, e Event) Record {
 		Hops:       e.Hops,
 		Txn:        e.Txn,
 		JTI:        e.JTI,
+		ChainIndex: e.ChainIndex,
 	}
 }
 

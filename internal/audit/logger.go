@@ -21,8 +21,16 @@ import (
 const GenesisPrevHash = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e490166ae4ba7b5b37bcd8deac"
 
 var (
-	ErrUnhealthy   = errors.New("audit: sink unhealthy")
-	ErrChainBroken = errors.New("audit: hash chain broken")
+	ErrUnhealthy      = errors.New("audit: sink unhealthy")
+	ErrChainBroken    = errors.New("audit: hash chain broken")
+	ErrRecordTooLarge = errors.New("audit: record exceeds scanner limit")
+)
+
+const (
+	// MaxLineBytes is the Scanner token cap used by recover and trace.
+	MaxLineBytes   = 1024 * 1024
+	maxEventString = 4096
+	maxEventHops   = 32
 )
 
 // Event is one STS decision record.
@@ -88,7 +96,7 @@ func (l *Logger) recover() error {
 		return err
 	}
 	sc := bufio.NewScanner(l.file)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	sc.Buffer(make([]byte, 0, 64*1024), MaxLineBytes)
 	prev := GenesisPrevHash
 	var index uint64
 	var last Event
@@ -175,36 +183,48 @@ func payloadHash(e Event) (string, error) {
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
-// canonicalizeEvent makes Event strings valid UTF-8 so Append and
-// verify hash the same json.Marshal bytes. encoding/json is not
-// round-trip stable for invalid UTF-8.
+// canonicalizeEvent makes Event strings valid UTF-8 and length-bounded
+// so Append and verify hash the same json.Marshal bytes, and so a
+// written line stays inside MaxLineBytes. encoding/json is not
+// round-trip stable for invalid UTF-8; unbounded request fields would
+// otherwise fail recover/trace as token-too-long.
 func canonicalizeEvent(e *Event) {
-	e.Timestamp = validUTF8(e.Timestamp)
-	e.EventType = validUTF8(e.EventType)
-	e.ReasonCode = validUTF8(e.ReasonCode)
-	e.Txn = validUTF8(e.Txn)
-	e.JTI = validUTF8(e.JTI)
-	e.AgentID = validUTF8(e.AgentID)
-	e.Workload = validUTF8(e.Workload)
-	e.Principal = validUTF8(e.Principal)
-	e.Audience = validUTF8(e.Audience)
-	e.Scope = validUTF8(e.Scope)
-	e.Hash = validUTF8(e.Hash)
-	e.PrevHash = validUTF8(e.PrevHash)
+	e.Timestamp = boundEventString(e.Timestamp)
+	e.EventType = boundEventString(e.EventType)
+	e.ReasonCode = boundEventString(e.ReasonCode)
+	e.Txn = boundEventString(e.Txn)
+	e.JTI = boundEventString(e.JTI)
+	e.AgentID = boundEventString(e.AgentID)
+	e.Workload = boundEventString(e.Workload)
+	e.Principal = boundEventString(e.Principal)
+	e.Audience = boundEventString(e.Audience)
+	e.Scope = boundEventString(e.Scope)
+	e.Hash = boundEventString(e.Hash)
+	e.PrevHash = boundEventString(e.PrevHash)
+	if len(e.Hops) > maxEventHops {
+		e.Hops = e.Hops[:maxEventHops]
+	}
 	if len(e.Hops) > 0 {
 		hops := make([]string, len(e.Hops))
 		for i, h := range e.Hops {
-			hops[i] = validUTF8(h)
+			hops[i] = boundEventString(h)
 		}
 		e.Hops = hops
 	}
 }
 
-func validUTF8(s string) string {
-	if utf8.ValidString(s) {
+func boundEventString(s string) string {
+	if !utf8.ValidString(s) {
+		s = strings.ToValidUTF8(s, "\uFFFD")
+	}
+	if len(s) <= maxEventString {
 		return s
 	}
-	return strings.ToValidUTF8(s, "\uFFFD")
+	s = s[:maxEventString]
+	for len(s) > 0 && !utf8.ValidString(s) {
+		s = s[:len(s)-1]
+	}
+	return s
 }
 
 // Append writes e, filling hash-chain fields, and Syncs the file.
@@ -230,6 +250,9 @@ func (l *Logger) Append(e Event) error {
 	if err != nil {
 		l.poisoned = true
 		return err
+	}
+	if len(line)+1 > MaxLineBytes {
+		return ErrRecordTooLarge
 	}
 	line = append(line, '\n')
 	if _, err := l.file.Write(line); err != nil {
