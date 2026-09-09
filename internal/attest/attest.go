@@ -34,9 +34,25 @@ type LocalKeys struct {
 	Now      func() int64
 }
 
+func (l *LocalKeys) keys() (token.JWKS, error) {
+	if l == nil || len(l.Keys.Keys) == 0 {
+		return token.JWKS{}, ErrUnattested
+	}
+	return l.Keys, nil
+}
+
+func (l *LocalKeys) Ready() error {
+	_, err := l.keys()
+	return err
+}
+
 func (l *LocalKeys) Attest(ctx context.Context, actorToken string) (WorkloadIdentity, error) {
 	_ = ctx
-	_, c, err := token.Verify(actorToken, l.Keys)
+	ks, err := l.keys()
+	if err != nil {
+		return WorkloadIdentity{}, ErrUnattested
+	}
+	_, c, err := token.Verify(actorToken, ks)
 	if err != nil {
 		return WorkloadIdentity{}, ErrUnattested
 	}
@@ -54,17 +70,39 @@ func (l *LocalKeys) Attest(ctx context.Context, actorToken string) (WorkloadIden
 	return WorkloadIdentity{ID: c.Sub, Issuer: c.Iss, JTI: c.Jti}, nil
 }
 
-// SPIFFEJWT verifies JWT-SVIDs against a JWKS bundle (SPIRE OIDC discovery
-// dump or a static bundle file). The subject must be a spiffe:// URI.
+// SPIFFEJWT verifies JWT-SVIDs against a JWKS bundle (file) or a live
+// KeysFn (OIDC discovery / JWKS URL). The subject must be a spiffe:// URI.
+// This is not a SPIRE Workload API client.
 type SPIFFEJWT struct {
 	Bundle   token.JWKS
+	KeysFn   func() (token.JWKS, error)
 	Audience string
+	Issuer   string
 	Now      func() int64
+}
+
+func (s *SPIFFEJWT) keys() (token.JWKS, error) {
+	if s != nil && s.KeysFn != nil {
+		return s.KeysFn()
+	}
+	if s == nil || len(s.Bundle.Keys) == 0 {
+		return token.JWKS{}, ErrUnattested
+	}
+	return s.Bundle, nil
+}
+
+func (s *SPIFFEJWT) Ready() error {
+	_, err := s.keys()
+	return err
 }
 
 func (s *SPIFFEJWT) Attest(ctx context.Context, actorToken string) (WorkloadIdentity, error) {
 	_ = ctx
-	_, c, err := token.Verify(actorToken, s.Bundle)
+	ks, err := s.keys()
+	if err != nil {
+		return WorkloadIdentity{}, ErrUnattested
+	}
+	_, c, err := token.Verify(actorToken, ks)
 	if err != nil {
 		return WorkloadIdentity{}, ErrUnattested
 	}
@@ -73,6 +111,11 @@ func (s *SPIFFEJWT) Attest(ctx context.Context, actorToken string) (WorkloadIden
 	}
 	if !strings.HasPrefix(c.Sub, "spiffe://") {
 		return WorkloadIdentity{}, ErrUnattested
+	}
+	if s.Issuer != "" {
+		if err := c.ValidateIssuer(s.Issuer); err != nil {
+			return WorkloadIdentity{}, ErrUnattested
+		}
 	}
 	if s.Audience != "" && !c.Aud.Contains(s.Audience) {
 		return WorkloadIdentity{}, ErrAudience
@@ -99,4 +142,17 @@ func (f FirstSuccessful) Attest(ctx context.Context, actorToken string) (Workloa
 		return WorkloadIdentity{}, ErrUnattested
 	}
 	return WorkloadIdentity{}, last
+}
+
+func (f FirstSuccessful) Ready() error {
+	for _, a := range f {
+		r, ok := a.(interface{ Ready() error })
+		if !ok {
+			continue
+		}
+		if err := r.Ready(); err != nil {
+			return err
+		}
+	}
+	return nil
 }

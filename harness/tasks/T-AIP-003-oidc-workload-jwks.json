@@ -1,0 +1,21 @@
+{
+  "task_id": "T-AIP-003-oidc-workload-jwks",
+  "invariant_ids": ["AI1", "AI17"],
+  "security_sensitive": true,
+  "security_problem": "Workload JWT-SVID JWKS fetched over cleartext non-loopback HTTP can be substituted. OIDC discovery that does not bind issuer or that advertises a cleartext jwks_uri can point attestation at attacker keys. A down or empty JWKS must not look ready.",
+  "required_behavior": "serve accepts one of -spiffe-jwks, -spiffe-jwks-url, or -spiffe-oidc-issuer. JWKS and OIDC issuer URLs must be https except loopback http. OIDC discovery issuer and JWT iss must equal the configured issuer exactly (trailing slash is significant); jwks_uri is subject to the same URL check. Keys are re-fetched on each Attest. Empty JWKS fails closed. GET /readyz fails if a live attestor cannot load keys.",
+  "failure_behavior": "Fail closed: non-https non-loopback JWKS/OIDC URLs, issuer mismatch, missing jwks_uri, empty JWKS, and an unreachable live attestor produce a process error at start or HTTP 503 on /readyz. JWT-SVID verification remains JWKS-based; this is not a SPIRE Workload API client.",
+  "max_attempts": 3,
+  "required_commands": [
+    {
+      "name": "target_test",
+      "expect": "pass",
+      "argv": ["go", "test", "./internal/attest/...", "./internal/verify/...", "./internal/sts/...", "./cmd/agent-identity-plane/...", "-count", "1"]
+    },
+    {
+      "name": "harness",
+      "expect": "pass",
+      "argv": ["harness/check.sh"]
+    }
+  ]
+}

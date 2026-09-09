@@ -2,6 +2,7 @@ package sts_test
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/themayursinha/agent-identity-plane/internal/attest"
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
 	"github.com/themayursinha/agent-identity-plane/internal/scenario"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
@@ -341,6 +343,26 @@ func TestReadyzAndMetrics(t *testing.T) {
 	n, _ := resp.Body.Read(buf)
 	if !strings.Contains(string(buf[:n]), "aip_sts_minted_total") {
 		t.Fatalf("metrics: %s", buf[:n])
+	}
+}
+
+func TestReadyzFailsWhenLiveWorkloadJWKSUnavailable(t *testing.T) {
+	w := testWorld(t)
+	w.STS.Attestor = attest.FirstSuccessful{
+		w.STS.Attestor,
+		&attest.SPIFFEJWT{KeysFn: func() (token.JWKS, error) {
+			return token.JWKS{}, errors.New("jwks down")
+		}},
+	}
+	ts := httptest.NewServer(w.STS.Handler())
+	t.Cleanup(ts.Close)
+	resp, err := http.Get(ts.URL + "/readyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("readyz %d", resp.StatusCode)
 	}
 }
 

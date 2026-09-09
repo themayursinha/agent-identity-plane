@@ -7,7 +7,7 @@ Agent Identity Plane is a self-hosted Agent Registry + Security Token Service (S
 > **This is not an action-policy engine.** It authenticates agents and preserves provenance.
 > [MCP Visor](https://github.com/themayursinha/mcp-visor) decides whether a concrete `tools/call` may proceed.
 
-The design composes RFC 8693, WIMSE identifiers, and the AIMS (`draft-klrc-aiagent-auth`) profile. It does not require a live SPIRE deployment: workload credentials are verified from a JWKS bundle (SPIRE OIDC discovery or a local key set).
+The design composes RFC 8693, WIMSE identifiers, and the AIMS (`draft-klrc-aiagent-auth`) profile. It does not require a live SPIRE Workload API: workload credentials are verified from a JWKS bundle (file, HTTPS URL, or OIDC discovery).
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -98,6 +98,7 @@ agent-identity-plane visor-gateway \
 | AI14 | Invalid identity reloads keep the previous snapshot |
 | AI15 | Signing-key files must not be group- or world-readable |
 | AI16 | visor-gateway forwards only a verified actor chain |
+| AI17 | Workload JWT-SVID JWKS is fetched over https (loopback http) |
 
 ## Architecture
 
@@ -124,9 +125,10 @@ CLI: `serve`, `visor-gateway`, `registry lint`, `token inspect|verify`, `trace`,
 - **Single hop:** tokens are audience-bound and short-lived (default 120s)
 - **Self-hosted:** single Go binary; standard library only
 - **Loopback by default:** `-listen` rejects `0.0.0.0` and `[::]`
-- **Honest SPIFFE claim:** JWT-SVID verification is JWKS-based and fixture-tested; this is not a live SPIRE / Workload API deployment
+- **Honest SPIFFE claim:** JWT-SVID verification is JWKS-based (file, `https` URL, or OIDC discovery). This is not a live SPIRE Workload API / gRPC client.
 - **v0.2 operability:** overlapping STS kids, durable `jti` replay at exchange, atomic SIGHUP identity snapshot, optional TLS, `/readyz` + `/metrics`. Not a production identity plane.
 - **v0.3 visor-gateway:** first-class identity PEP. JWKS file or `https` URL (loopback `http` allowed). Verified `--client-id` / `--session-id`; optional HTTP reverse-proxy that overwrites `X-Visor-*`. mcp-visor is unchanged.
+- **v0.4 live workload JWKS:** `serve` may fetch JWT-SVID keys from `-spiffe-jwks-url` or `-spiffe-oidc-issuer` (same URL/TLS policy as visor-gateway). Still not Workload API.
 - **Not a host sandbox and not an MCP policy proxy**
 
 ## Documentation

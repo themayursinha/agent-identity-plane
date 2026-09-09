@@ -32,13 +32,14 @@ This document is an engineering threat model, not a compliance claim.
 | Missing attribution | Audit record before HTTP response (AI8) | n/a |
 | Spoofed visor `--client-id` at the gateway | visor-gateway verifies Bearer and overwrites `X-Visor-*` after hop-by-hop strip (AI16) | `missing_bearer` / `invalid_token` / `incomplete_chain` |
 | Unspecified bind | `ValidateBind` (AI11) | process error |
+| Cleartext or empty live JWT-SVID JWKS | URL policy + empty-JWKS fail-closed (AI17) | process error / `/readyz` 503 |
 
 ## Out of scope / honest limits
 
-- Not a live SPIRE Workload API or node attestor. JWT-SVID verification is JWKS-based and fixture-tested.
+- Not a live SPIRE Workload API or node attestor. JWT-SVID verification is JWKS-based (file, `https` URL, or OIDC discovery).
 - Not a host sandbox. A compromised workload that *is* registered for an agent can mint tokens for that agent.
 - Not mcp-visor action policy. A valid actor chain can still be denied by visor tool rules.
-- Revocation is TTL + durable `jti` replay at exchange for STS-issued subject tokens (including clock skew and process restart); there is no agent denylist in v0.3.
+- Revocation is TTL + durable `jti` replay at exchange for STS-issued subject tokens (including clock skew and process restart); there is no agent denylist in v0.4.
 - Proof-of-possession (WPT / DPoP) is not implemented; minted tokens are bearer tokens with short TTL and single audience.
 - visor-gateway `-backend` is an HTTP reverse-proxy. mcp-visor `serve` is stdio; use `-identity-only` and start visor with the derived `--client-id` / `--session-id`.
 - `-client-short-name` is opt-in. Last URI segments are not unique across prefixes; the default client-id is the full `act.sub`.

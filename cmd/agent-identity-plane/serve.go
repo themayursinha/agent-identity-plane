@@ -15,6 +15,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/registry"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
 	"github.com/themayursinha/agent-identity-plane/internal/token"
+	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
 
 func cmdServe(args []string) error {
@@ -26,7 +27,9 @@ func cmdServe(args []string) error {
 	wlPath := fs.String("workload-keys", "", "workload JWKS or workload-key file")
 	idpPath := fs.String("idp-jwks", "", "trusted IdP JWKS for first-hop user tokens")
 	idpIss := fs.String("idp-issuer", "", "expected IdP iss claim")
-	spiffePath := fs.String("spiffe-jwks", "", "optional JWT-SVID JWKS bundle")
+	spiffePath := fs.String("spiffe-jwks", "", "optional JWT-SVID JWKS bundle file")
+	spiffeURL := fs.String("spiffe-jwks-url", "", "optional JWT-SVID JWKS URL (https, or loopback http)")
+	spiffeOIDC := fs.String("spiffe-oidc-issuer", "", "optional OIDC issuer for JWT-SVID JWKS discovery")
 	auditPath := fs.String("audit-log", "", "hash-linked JSONL audit path (required)")
 	replayPath := fs.String("replay-log", "", "durable consumed-jti JSONL (required; survives restart)")
 	ttl := fs.Duration("ttl", 120*time.Second, "minted token TTL")
@@ -38,6 +41,29 @@ func cmdServe(args []string) error {
 	}
 	if *regPath == "" || *keyPath == "" || *wlPath == "" || *idpPath == "" || *auditPath == "" || *replayPath == "" {
 		return fmt.Errorf("serve requires -registry, -signing-key, -workload-keys, -idp-jwks, -audit-log, and -replay-log")
+	}
+	nSpiffe := 0
+	if *spiffePath != "" {
+		nSpiffe++
+	}
+	if *spiffeURL != "" {
+		nSpiffe++
+	}
+	if *spiffeOIDC != "" {
+		nSpiffe++
+	}
+	if nSpiffe > 1 {
+		return fmt.Errorf("serve: use one of -spiffe-jwks, -spiffe-jwks-url, or -spiffe-oidc-issuer")
+	}
+	if *spiffeURL != "" {
+		if err := verify.CheckJWKSURL(*spiffeURL); err != nil {
+			return err
+		}
+	}
+	if *spiffeOIDC != "" {
+		if err := verify.CheckJWKSURL(*spiffeOIDC); err != nil {
+			return err
+		}
 	}
 	if err := rejectAliasedPaths([]namedPath{
 		{"-registry", *regPath},
@@ -70,13 +96,29 @@ func cmdServe(args []string) error {
 	}
 	local := &attest.LocalKeys{Keys: wlKeys, Audience: *issuer, Now: func() int64 { return time.Now().Unix() }}
 	var attestor attest.WorkloadAttestor = local
-	if *spiffePath != "" {
+	now := func() int64 { return time.Now().Unix() }
+	switch {
+	case *spiffePath != "":
 		bundle, err := loadJWKS(*spiffePath)
 		if err != nil {
 			return err
 		}
-		spiffe := &attest.SPIFFEJWT{Bundle: bundle, Audience: *issuer, Now: func() int64 { return time.Now().Unix() }}
-		attestor = attest.FirstSuccessful{local, spiffe}
+		attestor = attest.FirstSuccessful{local, &attest.SPIFFEJWT{Bundle: bundle, Audience: *issuer, Now: now}}
+	case *spiffeURL != "":
+		fn, err := verify.LiveJWKS("", *spiffeURL)
+		if err != nil {
+			return err
+		}
+		if _, err := fn(); err != nil {
+			return fmt.Errorf("serve: -spiffe-jwks-url: %w", err)
+		}
+		attestor = attest.FirstSuccessful{local, &attest.SPIFFEJWT{KeysFn: fn, Audience: *issuer, Now: now}}
+	case *spiffeOIDC != "":
+		fn, err := verify.LiveOIDC(*spiffeOIDC)
+		if err != nil {
+			return err
+		}
+		attestor = attest.FirstSuccessful{local, &attest.SPIFFEJWT{KeysFn: fn, Audience: *issuer, Issuer: *spiffeOIDC, Now: now}}
 	}
 	log, err := audit.NewLogger(*auditPath)
 	if err != nil {

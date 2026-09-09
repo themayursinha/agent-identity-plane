@@ -3,8 +3,9 @@
 ## AI1 — Verified workload credential
 
 No token is minted unless the `actor_token` verifies against a configured
-workload attestor (local Ed25519 keys or a SPIFFE JWT-SVID JWKS bundle).
-Reason code on failure: `invalid_actor_token`.
+workload attestor (local Ed25519 keys or a SPIFFE JWT-SVID JWKS from a
+file, `https` URL, or OIDC discovery). Reason code on failure:
+`invalid_actor_token`.
 
 ## AI2 — Agent authorized on workload
 
@@ -120,4 +121,15 @@ them. The STS Bearer is consumed at the PEP and is not forwarded to
 fails closed (no backend forward, no completed identity decision).
 JWKS is re-read or fetched on each verify; JWKS URLs must be `https`
 except loopback `http`.
+
+## AI17 — Live workload JWKS is HTTPS (or loopback HTTP)
+
+JWT-SVID verification may fetch JWKS from `-spiffe-jwks-url` or from
+OIDC discovery (`-spiffe-oidc-issuer` → `{issuer}/.well-known/openid-configuration`
+→ `jwks_uri`). Those URLs, and any redirect, must be `https` except
+loopback `http`. TLS is 1.2+; bodies are capped at 1MiB; an empty
+JWKS fails closed. Discovery `issuer` and JWT `iss` must equal the
+configured issuer exactly (trailing slash is significant). Keys are
+re-fetched on each `Attest`. `/readyz` fails if a live attestor cannot
+load keys. This is not a SPIRE Workload API client.
 
