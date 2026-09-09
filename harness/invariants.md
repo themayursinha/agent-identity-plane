@@ -153,9 +153,10 @@ Every minted STS token carries `cnf.jkt`, the RFC 7638 thumbprint of
 the JWK that verified the actor token for that hop. visor-gateway
 requires a `DPoP` proof JWT (`typ=dpop+jwt`) whose embedded public JWK
 thumbprint equals that value. `htm` matches the request method. `htu`
-is reconstructed from this request (https iff TLS is present, `Host`,
-escaped path, no query or fragment). `X-Forwarded-*` is not used.
-`ath` is SHA-256 of the access token. `iat` uses the same clock skew
+on the PEP is reconstructed from this request (https iff TLS is present,
+`Host`, escaped path, no query or fragment). `X-Forwarded-*` is not used.
+Callers set proof `htu` from the outbound URL scheme and host (`OutboundURI`);
+local TLS is still nil in `RoundTrip`. `ath` is SHA-256 of the access token. `iat` uses the same clock skew
 as minted tokens. Proof `jti` is single-use in `-dpop-replay` through
 `iat + ClockSkew`. The DPoP header JWK must be a public key. Missing
 `cnf`, missing DPoP, invalid proof, or replay is denied with no

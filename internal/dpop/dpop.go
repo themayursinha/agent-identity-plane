@@ -61,11 +61,41 @@ func RequestURI(r *http.Request) (string, error) {
 	if r.TLS != nil {
 		scheme = "https"
 	}
+	path := escapedPath(r)
+	return scheme + "://" + r.Host + path, nil
+}
+
+// OutboundURI is the htu a client puts in a DPoP proof it is about to
+// send. Scheme and host come from the request URL (the address the peer
+// will observe). Local TLS state is still nil in RoundTrip, so
+// RequestURI must not be used here. X-Forwarded-* is ignored.
+func OutboundURI(r *http.Request) (string, error) {
+	if r == nil || r.URL == nil {
+		return "", ErrHTU
+	}
+	scheme := strings.ToLower(r.URL.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", ErrHTU
+	}
+	host := r.URL.Host
+	if strings.TrimSpace(host) == "" {
+		host = r.Host
+	}
+	if strings.TrimSpace(host) == "" {
+		return "", ErrHTU
+	}
+	return scheme + "://" + host + escapedPath(r), nil
+}
+
+func escapedPath(r *http.Request) string {
+	if r.URL == nil {
+		return "/"
+	}
 	path := r.URL.EscapedPath()
 	if path == "" {
-		path = "/"
+		return "/"
 	}
-	return scheme + "://" + r.Host + path, nil
+	return path
 }
 
 // Prove signs a DPoP JWT with the workload key for this hop.

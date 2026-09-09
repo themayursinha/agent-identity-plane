@@ -9,6 +9,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
 	"github.com/themayursinha/agent-identity-plane/internal/denylist"
 	"github.com/themayursinha/agent-identity-plane/internal/gateway"
+	"github.com/themayursinha/agent-identity-plane/internal/identfile"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
@@ -37,6 +38,15 @@ func main() {
 	}
 	fn, err := verify.LiveJWKS(*jwksPath, *jwksURL)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := identfile.RejectAliased([]identfile.Named{
+		{"-audit-log", *auditPath},
+		{"-denylist", *denyPath},
+		{"-dpop-replay", *dpopPath},
+		{"-jwks", *jwksPath},
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

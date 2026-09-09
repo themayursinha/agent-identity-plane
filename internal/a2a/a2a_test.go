@@ -2,10 +2,12 @@ package a2a
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -120,5 +122,83 @@ func TestLocalExchangerDeny(t *testing.T) {
 	_, err := ex.Exchange(context.Background(), sts.ExchangeRequest{AgentID: "x", Audience: "y"})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestTripperDPoPHTUUsesHTTPSURL(t *testing.T) {
+	log, err := audit.NewLogger(filepath.Join(t.TempDir(), "a.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = log.Close() })
+	w, err := scenario.NewWorld(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := w.UserToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor, err := w.ActorToken(scenario.WLOncall)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var htu string
+	dest := httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		raw := r.Header.Get("DPoP")
+		parts := strings.Split(raw, ".")
+		if len(parts) != 3 {
+			t.Errorf("dpop %q", raw)
+			rw.WriteHeader(400)
+			return
+		}
+		pb, err := token.B64Decode(parts[1])
+		if err != nil {
+			t.Error(err)
+			rw.WriteHeader(400)
+			return
+		}
+		var c struct {
+			HTU string `json:"htu"`
+		}
+		if err := json.Unmarshal(pb, &c); err != nil {
+			t.Error(err)
+			rw.WriteHeader(400)
+			return
+		}
+		htu = c.HTU
+		rw.WriteHeader(204)
+	}))
+	t.Cleanup(dest.Close)
+	base := dest.Client().Transport
+	client := dest.Client()
+	client.Transport = &Tripper{
+		Base:      base,
+		Exchanger: LocalExchanger{STS: w.STS},
+		AgentID:   scenario.Oncall,
+		Audience:  scenario.Invest,
+		ActorToken: func(ctx context.Context) (string, error) {
+			return actor, nil
+		},
+		ProofKey: func(ctx context.Context) (*token.KeyFile, error) {
+			return w.WL[scenario.WLOncall], nil
+		},
+		Now: func() time.Time { return w.Now },
+	}
+	ctx := WithSubjectToken(context.Background(), user)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dest.URL+"/session", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		t.Fatalf("status %d htu %s", resp.StatusCode, htu)
+	}
+	if !strings.HasPrefix(htu, "https://") || !strings.HasSuffix(htu, "/session") {
+		t.Fatalf("htu %s", htu)
 	}
 }

@@ -129,6 +129,8 @@ same workload key that attested the hop. Proof `jti` values are written
 to `-dpop-replay` (JSONL, mode 0600) before allow, through
 `iat + ClockSkew`. Reconstruct `htu` from this request (TLS, Host,
 path). Do not trust `X-Forwarded-Proto` or `X-Forwarded-Host`.
+Clients that mint a DPoP proof (the A2A tripper) set `htu` from the
+outbound URL scheme and host; `RoundTrip` still has `TLS == nil`.
 There is no DPoP nonce. STS `POST /oauth/token` still uses
 `actor_token`, not DPoP.
 

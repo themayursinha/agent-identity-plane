@@ -141,6 +141,38 @@ func TestMissingProof(t *testing.T) {
 	}
 }
 
+func TestOutboundURIUsesURLSchemeNotTLS(t *testing.T) {
+	req, err := http.NewRequest(http.MethodPost, "https://mcp.example.test/session?x=1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.TLS != nil {
+		t.Fatal("outbound request TLS must still be nil")
+	}
+	got, err := OutboundURI(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "https://mcp.example.test/session" {
+		t.Fatalf("outbound htu %s", got)
+	}
+	in, err := RequestURI(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in != "http://mcp.example.test/session" {
+		t.Fatalf("inbound htu must not use URL scheme: %s", in)
+	}
+}
+
+func TestOutboundURIRejectsMissingScheme(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/session", nil)
+	req.Host = "visor-gateway.test"
+	if _, err := OutboundURI(req); err != ErrHTU {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestMissingHost(t *testing.T) {
 	req := &http.Request{Method: http.MethodPost, URL: &url.URL{Path: "/session"}}
 	_, err := RequestURI(req)

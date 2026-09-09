@@ -123,7 +123,9 @@ a `DPoP` proof JWT (`typ=dpop+jwt`) whose embedded public JWK
 thumbprint equals `cnf.jkt`. The proof must match this request's
 method (`htm`), reconstructed URI (`htu`: TLS→https else http, `Host`,
 path; no query/fragment; `X-Forwarded-*` ignored), access-token hash
-(`ath`), and `iat` within clock skew. Proof `jti` values are consumed
+(`ath`), and `iat` within clock skew. Clients mint proofs with `htu`
+from the outbound URL (scheme+host), not from local TLS state.
+Proof `jti` values are consumed
 in `-dpop-replay` through `iat + ClockSkew`. Missing `cnf`, missing or
 invalid DPoP, or a replayed proof is 401 with no backend. This is not
 a DPoP nonce deployment and not a Production identity plane.

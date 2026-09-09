@@ -181,7 +181,7 @@ func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, err
 		}
-		htu, err := dpop.RequestURI(clone)
+		htu, err := dpop.OutboundURI(clone)
 		if err != nil {
 			return nil, err
 		}
