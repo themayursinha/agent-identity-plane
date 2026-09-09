@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/denylist"
 	"github.com/themayursinha/agent-identity-plane/internal/gateway"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
@@ -22,14 +23,15 @@ func main() {
 	identityOnly := flag.Bool("identity-only", true, "return mapping JSON without proxying")
 	shortName := flag.Bool("client-short-name", false, "opt-in last URI segment as visor client-id (can collide across prefixes)")
 	auditPath := flag.String("audit-log", "", "audit JSONL (required)")
+	denyPath := flag.String("denylist", "", "denylist JSON (required)")
 	flag.Parse()
 
 	if err := sts.ValidateBind(*listen); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	if *auditPath == "" {
-		fmt.Fprintln(os.Stderr, "error: -audit-log is required")
+	if *auditPath == "" || *denyPath == "" {
+		fmt.Fprintln(os.Stderr, "error: -audit-log and -denylist are required")
 		os.Exit(1)
 	}
 	fn, err := verify.LiveJWKS(*jwksPath, *jwksURL)
@@ -43,6 +45,11 @@ func main() {
 		os.Exit(1)
 	}
 	defer log.Close()
+	dlFn, err := denylist.Live(*denyPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 	cfg := &gateway.Config{
 		Bind:         *listen,
 		Audience:     *audience,
@@ -50,6 +57,7 @@ func main() {
 		Audit:        log,
 		IdentityOnly: *identityOnly,
 		ShortName:    *shortName,
+		DenylistFn:   dlFn,
 	}
 	if *backend != "" {
 		u, err := url.Parse(*backend)

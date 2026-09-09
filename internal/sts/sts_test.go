@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/denylist"
 	"github.com/themayursinha/agent-identity-plane/internal/registry"
 	"github.com/themayursinha/agent-identity-plane/internal/scenario"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
@@ -232,5 +233,39 @@ func TestMissingTokens(t *testing.T) {
 	res := w.STS.Exchange(context.Background(), sts.ExchangeRequest{AgentID: scenario.Oncall, Audience: scenario.Invest})
 	if res.ReasonCode != sts.ReasonInvalidRequest {
 		t.Fatalf("got %s", res.ReasonCode)
+	}
+}
+
+func TestDenylistBlocksAgentWorkloadPrincipal(t *testing.T) {
+	w := testWorld(t)
+	user, _ := w.UserToken()
+	d, err := denylist.New(denylist.File{Version: 1, Agents: []string{scenario.Oncall}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.STS.Denylist = d
+	res := w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
+	if res.ReasonCode != sts.ReasonAgentDenied || res.Token != "" {
+		t.Fatalf("agent: %s %s token=%q", res.ReasonCode, res.ErrorDesc, res.Token)
+	}
+
+	d, err = denylist.New(denylist.File{Version: 1, Workloads: []string{scenario.WLOncall}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.STS.Denylist = d
+	res = w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
+	if res.ReasonCode != sts.ReasonWorkloadDenied || res.Token != "" {
+		t.Fatalf("workload: %s token=%q", res.ReasonCode, res.Token)
+	}
+
+	d, err = denylist.New(denylist.File{Version: 1, Principals: []string{scenario.User}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.STS.Denylist = d
+	res = w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
+	if res.ReasonCode != sts.ReasonPrincipalDenied || res.Token != "" {
+		t.Fatalf("principal: %s token=%q", res.ReasonCode, res.Token)
 	}
 }

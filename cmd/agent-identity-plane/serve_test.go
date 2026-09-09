@@ -15,6 +15,7 @@ func TestServeSPIFFESourcesExclusive(t *testing.T) {
 		"-idp-jwks", filepath.Join(dir, "idp.json"),
 		"-audit-log", filepath.Join(dir, "audit.jsonl"),
 		"-replay-log", filepath.Join(dir, "replay.jsonl"),
+		"-denylist", filepath.Join(dir, "denylist.json"),
 	}
 	pairs := [][]string{
 		{"-spiffe-jwks", filepath.Join(dir, "spiffe.json"), "-spiffe-jwks-url", "https://oidc.example.test/keys"},
@@ -38,6 +39,7 @@ func TestServeRejectsCleartextSPIFFEURL(t *testing.T) {
 		"-idp-jwks", filepath.Join(dir, "idp.json"),
 		"-audit-log", filepath.Join(dir, "audit.jsonl"),
 		"-replay-log", filepath.Join(dir, "replay.jsonl"),
+		"-denylist", filepath.Join(dir, "denylist.json"),
 		"-spiffe-jwks-url", "http://oidc.example.test/jwks.json",
 	})
 	if err == nil || !strings.Contains(err.Error(), "https or loopback http") {
@@ -50,6 +52,7 @@ func TestServeRejectsCleartextSPIFFEURL(t *testing.T) {
 		"-idp-jwks", filepath.Join(dir, "idp.json"),
 		"-audit-log", filepath.Join(dir, "audit.jsonl"),
 		"-replay-log", filepath.Join(dir, "replay.jsonl"),
+		"-denylist", filepath.Join(dir, "denylist.json"),
 		"-spiffe-oidc-issuer", "http://oidc.example.test",
 	})
 	if err == nil || !strings.Contains(err.Error(), "https or loopback http") {

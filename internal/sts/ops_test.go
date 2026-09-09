@@ -281,6 +281,34 @@ func TestRegistryReloadFailClosed(t *testing.T) {
 	}
 }
 
+func TestDenylistReloadFailClosed(t *testing.T) {
+	w := testWorld(t)
+	path := filepath.Join(t.TempDir(), "denylist.json")
+	if err := os.WriteFile(path, []byte(`{"version":1,"agents":["spiffe://example.test/agent/oncall"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rel := sts.NewReloader(w.STS, "", "")
+	rel.DenylistPath = path
+	if err := rel.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	user, _ := w.UserToken()
+	res := w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
+	if res.ReasonCode != sts.ReasonAgentDenied {
+		t.Fatalf("got %s", res.ReasonCode)
+	}
+	if err := os.WriteFile(path, []byte(`{"version":1,"agents":[]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := rel.Reload(); err == nil {
+		t.Fatal("expected invalid denylist to fail")
+	}
+	res = w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
+	if res.ReasonCode != sts.ReasonAgentDenied {
+		t.Fatalf("previous denylist should remain: %s", res.ReasonCode)
+	}
+}
+
 func TestRateLimitHTTP(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.jsonl")
 	log, err := audit.NewLogger(path)

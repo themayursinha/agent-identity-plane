@@ -50,7 +50,7 @@ func TestCLIDemoAndLint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "v0.4.0") {
+	if !strings.Contains(string(out), "v0.5.0") {
 		t.Fatalf("version %s", out)
 	}
 
@@ -59,7 +59,7 @@ func TestCLIDemoAndLint(t *testing.T) {
 	if err == nil {
 		t.Fatal("visor-gateway without flags must fail")
 	}
-	if !strings.Contains(string(out), "-audit-log") {
+	if !strings.Contains(string(out), "-denylist") {
 		t.Fatalf("visor-gateway usage: %s", out)
 	}
 }

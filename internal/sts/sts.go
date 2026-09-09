@@ -12,6 +12,7 @@ import (
 
 	"github.com/themayursinha/agent-identity-plane/internal/attest"
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/denylist"
 	"github.com/themayursinha/agent-identity-plane/internal/registry"
 	"github.com/themayursinha/agent-identity-plane/internal/token"
 )
@@ -38,6 +39,9 @@ const (
 	ReasonAgentExpired           = "agent_expired"
 	ReasonReplayedToken          = "replayed_token"
 	ReasonRateLimited            = "rate_limited"
+	ReasonAgentDenied            = denylist.ReasonAgentDenied
+	ReasonWorkloadDenied         = denylist.ReasonWorkloadDenied
+	ReasonPrincipalDenied        = denylist.ReasonPrincipalDenied
 )
 
 var ErrUnspecifiedBind = errors.New("sts: listen address must not be unspecified")
@@ -70,6 +74,7 @@ type Config struct {
 	RateLimit   float64 // token-exchange requests per second; 0 disables
 	TLSCertFile string
 	TLSKeyFile  string
+	Denylist    *denylist.List
 	Metrics     Metrics
 
 	limiter *tokenBucket
@@ -81,13 +86,14 @@ type identitySnap struct {
 	Attestor  attest.WorkloadAttestor
 	IdPKeys   token.JWKS
 	IdPIssuer string
+	Denylist  *denylist.List
 }
 
 // SetRegistry replaces the live registry. Reloader must not combine this
 // with ReplaceKeyring; use installIdentity so one request never observes
 // a torn registry/keyring pair.
 func (c *Config) SetRegistry(r *registry.Registry) {
-	_ = c.installIdentity(r, nil)
+	_ = c.installIdentity(r, nil, nil)
 }
 
 // ReplaceKeyring swaps signing material in place.
@@ -95,13 +101,12 @@ func (c *Config) ReplaceKeyring(kr *token.Keyring) error {
 	if kr == nil || kr.ActiveKID() == "" {
 		return token.ErrInvalidKey
 	}
-	return c.installIdentity(nil, kr)
+	return c.installIdentity(nil, kr, nil)
 }
 
-// installIdentity publishes registry and/or keyring under one lock so
-// Exchange, /jwks.json, and /readyz observe a single snapshot. An
-// unpublished active_kid is rejected without mutating either pointer.
-func (c *Config) installIdentity(reg *registry.Registry, kr *token.Keyring) error {
+// installIdentity publishes registry, keyring, and/or denylist under one
+// lock so Exchange, /jwks.json, and /readyz observe a single snapshot.
+func (c *Config) installIdentity(reg *registry.Registry, kr *token.Keyring, dl *denylist.List) error {
 	if c == nil {
 		return token.ErrInvalidKey
 	}
@@ -118,6 +123,9 @@ func (c *Config) installIdentity(reg *registry.Registry, kr *token.Keyring) erro
 	if kr != nil {
 		c.Signer = kr
 	}
+	if dl != nil {
+		c.Denylist = dl
+	}
 	return nil
 }
 
@@ -130,6 +138,7 @@ func (c *Config) snapshot() identitySnap {
 		Attestor:  c.Attestor,
 		IdPKeys:   c.IdPKeys,
 		IdPIssuer: c.IdPIssuer,
+		Denylist:  c.Denylist,
 	}
 }
 
@@ -244,6 +253,12 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 	if err != nil {
 		return deny(mapRegistryErr(err), "access_denied", err.Error())
 	}
+	if snap.Denylist.HasAgent(req.AgentID) {
+		return deny(ReasonAgentDenied, "access_denied", "agent is denied")
+	}
+	if snap.Denylist.HasWorkload(wl.ID) {
+		return deny(ReasonWorkloadDenied, "access_denied", "workload is denied")
+	}
 
 	sub, fromSTS, err := c.verifySubject(req.SubjectToken, snap)
 	if err != nil {
@@ -251,6 +266,9 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 	}
 	if err := sub.ValidateSubject(); err != nil {
 		return deny(ReasonInvalidSubjectToken, "invalid_request", err.Error())
+	}
+	if snap.Denylist.HasPrincipal(sub.Sub) {
+		return deny(ReasonPrincipalDenied, "access_denied", "principal is denied")
 	}
 	if err := sub.ValidateTime(now, 0); err != nil {
 		if errors.Is(err, token.ErrExpired) {

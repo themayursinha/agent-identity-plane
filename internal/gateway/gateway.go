@@ -15,6 +15,7 @@ import (
 
 	"github.com/themayursinha/agent-identity-plane/internal/a2a"
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/denylist"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 	"github.com/themayursinha/agent-identity-plane/internal/visoradapter"
@@ -55,6 +56,7 @@ type Config struct {
 	RateLimit    float64
 	TLSCertFile  string
 	TLSKeyFile   string
+	DenylistFn   func() (*denylist.List, error)
 	Metrics      Metrics
 
 	limiter *tokenBucket
@@ -79,6 +81,10 @@ func (c *Config) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if err := c.keysReady(); err != nil {
+			http.Error(w, "not ready\n", http.StatusServiceUnavailable)
+			return
+		}
+		if err := c.denylistReady(); err != nil {
 			http.Error(w, "not ready\n", http.StatusServiceUnavailable)
 			return
 		}
@@ -113,24 +119,39 @@ func (c *Config) keysReady() error {
 	return nil
 }
 
+func (c *Config) denylistReady() error {
+	if c == nil || c.DenylistFn == nil {
+		return nil
+	}
+	_, err := c.DenylistFn()
+	return err
+}
+
 func (c *Config) handlePEP(w http.ResponseWriter, r *http.Request) {
 	if !c.limiter.allow() {
-		c.writeDeny(w, http.StatusTooManyRequests, ReasonRateLimited, "rate limited")
+		c.writeDeny(w, http.StatusTooManyRequests, ReasonRateLimited, "rate limited", nil)
 		return
 	}
 	raw := a2a.BearerToken(r.Header.Get("Authorization"))
 	if raw == "" {
-		c.writeDeny(w, http.StatusUnauthorized, ReasonMissingToken, "missing bearer token")
+		c.writeDeny(w, http.StatusUnauthorized, ReasonMissingToken, "missing bearer token", nil)
 		return
 	}
 	chain, err := c.Verifier.Verify(raw, c.Audience)
 	if err != nil {
-		c.writeDeny(w, http.StatusUnauthorized, ReasonInvalidToken, err.Error())
+		c.writeDeny(w, http.StatusUnauthorized, ReasonInvalidToken, err.Error(), nil)
 		return
 	}
 	m := visoradapter.FromChain(chain, visoradapter.Options{ShortName: c.ShortName})
 	if err := m.Complete(); err != nil {
-		c.writeDeny(w, http.StatusUnauthorized, ReasonIncomplete, err.Error())
+		c.writeDeny(w, http.StatusUnauthorized, ReasonIncomplete, err.Error(), nil)
+		return
+	}
+	if reason, err := c.denyIdentity(m); err != nil {
+		c.writeDeny(w, http.StatusServiceUnavailable, denylist.ReasonUnavailable, err.Error(), &m)
+		return
+	} else if reason != "" {
+		c.writeDeny(w, http.StatusUnauthorized, reason, reason, &m)
 		return
 	}
 	if err := c.record(audit.Event{
@@ -186,12 +207,31 @@ func (c *Config) failClosed(w http.ResponseWriter) {
 	http.Error(w, "audit unavailable\n", http.StatusServiceUnavailable)
 }
 
-func (c *Config) writeDeny(w http.ResponseWriter, status int, reason, desc string) {
-	if err := c.record(audit.Event{
+func (c *Config) denyIdentity(m visoradapter.Mapping) (string, error) {
+	if c == nil || c.DenylistFn == nil {
+		return "", nil
+	}
+	d, err := c.DenylistFn()
+	if err != nil {
+		return "", err
+	}
+	return d.DenyChain(m.Principal, m.ActingAgent, m.Hops), nil
+}
+
+func (c *Config) writeDeny(w http.ResponseWriter, status int, reason, desc string, m *visoradapter.Mapping) {
+	ev := audit.Event{
 		EventType:  "identity_denied",
 		ReasonCode: reason,
 		Audience:   c.Audience,
-	}); err != nil {
+	}
+	if m != nil {
+		ev.Txn = m.SessionID
+		ev.AgentID = m.ActingAgent
+		ev.Principal = m.Principal
+		ev.Hops = m.Hops
+		ev.Scope = m.Scope
+	}
+	if err := c.record(ev); err != nil {
 		c.failClosed(w)
 		return
 	}

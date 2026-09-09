@@ -66,7 +66,8 @@ agent-identity-plane serve \
   -workload-keys testdata/workloads.json \
   -idp-jwks testdata/idp-jwks.json \
   -audit-log ./sts-audit.jsonl \
-  -replay-log ./sts-replay.jsonl
+  -replay-log ./sts-replay.jsonl \
+  -denylist testdata/denylist.json
 
 # Identity PEP: verified --client-id / --session-id (stdio visor is started separately)
 agent-identity-plane visor-gateway \
@@ -75,7 +76,8 @@ agent-identity-plane visor-gateway \
   -issuer https://sts.example.test \
   -jwks-url http://127.0.0.1:8080/jwks.json \
   -identity-only \
-  -audit-log ./gateway-audit.jsonl
+  -audit-log ./gateway-audit.jsonl \
+  -denylist testdata/denylist.json
 ```
 
 ## What it enforces
@@ -99,6 +101,7 @@ agent-identity-plane visor-gateway \
 | AI15 | Signing-key files must not be group- or world-readable |
 | AI16 | visor-gateway forwards only a verified actor chain |
 | AI17 | Workload JWT-SVID JWKS is fetched over https (loopback http) |
+| AI18 | Denylisted agents, workloads, and principals cannot mint or pass the PEP |
 
 ## Architecture
 
@@ -114,7 +117,7 @@ user --session--> oncall-agent --RFC 8693 exchange--> STS
                    visor-gateway --verified --client-id--> mcp-visor --policy--> MCP server
 ```
 
-Core packages: `internal/token`, `internal/registry`, `internal/attest`, `internal/sts`, `internal/verify`, `internal/a2a`, `internal/audit`, `internal/visoradapter`, `internal/gateway`.
+Core packages: `internal/token`, `internal/registry`, `internal/attest`, `internal/sts`, `internal/verify`, `internal/a2a`, `internal/audit`, `internal/visoradapter`, `internal/gateway`, `internal/denylist`.
 
 CLI: `serve`, `visor-gateway`, `registry lint`, `token inspect|verify`, `trace`, `keys generate`, `demo`.
 
@@ -129,6 +132,7 @@ CLI: `serve`, `visor-gateway`, `registry lint`, `token inspect|verify`, `trace`,
 - **v0.2 operability:** overlapping STS kids, durable `jti` replay at exchange, atomic SIGHUP identity snapshot, optional TLS, `/readyz` + `/metrics`. Not a production identity plane.
 - **v0.3 visor-gateway:** first-class identity PEP. JWKS file or `https` URL (loopback `http` allowed). Verified `--client-id` / `--session-id`; optional HTTP reverse-proxy that overwrites `X-Visor-*`. mcp-visor is unchanged.
 - **v0.4 live workload JWKS:** `serve` may fetch JWT-SVID keys from `-spiffe-jwks-url` or `-spiffe-oidc-issuer` (same URL/TLS policy as visor-gateway). Still not Workload API.
+- **v0.5 agent denylist:** owned JSON of agent, workload, and principal IDs. Exact match. Enforced at mint and at visor-gateway (in-flight hops). Not Production; minted tokens remain bearer (no DPoP).
 - **Not a host sandbox and not an MCP policy proxy**
 
 ## Documentation
