@@ -42,10 +42,10 @@ func main() {
 		os.Exit(1)
 	}
 	if err := identfile.RejectAliased([]identfile.Named{
-		{"-audit-log", *auditPath},
-		{"-denylist", *denyPath},
-		{"-dpop-replay", *dpopPath},
-		{"-jwks", *jwksPath},
+		{Flag: "-audit-log", Path: *auditPath},
+		{Flag: "-denylist", Path: *denyPath},
+		{Flag: "-dpop-replay", Path: *dpopPath},
+		{Flag: "-jwks", Path: *jwksPath},
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
