@@ -178,6 +178,8 @@ visor JSONL. Opening an STS or visor-gateway audit log, and tracing
 it, verifies `prev_hash`, `chain_index`, and payload `hash` from
 genesis; a break fails closed. Operators look up a stolen token by
 minted `jti` (`trace -jti`) or by `txn` (`trace -txn`); a jti query
-returns the full transaction that minted it. This is the operator
+returns the full transaction that minted it. Planned signing-key
+rotation still waits `KeyRetirementWait`; compromise recovery removes
+the burned kid as soon as the replacement is active. This is the operator
 runbook surface for key compromise, not a Production claim.
 
