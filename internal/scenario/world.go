@@ -6,6 +6,7 @@ import (
 
 	"github.com/themayursinha/agent-identity-plane/internal/attest"
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/dpop"
 	"github.com/themayursinha/agent-identity-plane/internal/registry"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
 	"github.com/themayursinha/agent-identity-plane/internal/token"
@@ -195,6 +196,15 @@ func (w *World) HappyPath() (oncallTok, investTok string, err error) {
 		return "", "", errString(r2.ReasonCode + ": " + r2.ErrorDesc)
 	}
 	return r1.Token, r2.Token, nil
+}
+
+// Prove signs a DPoP proof with the named workload key.
+func (w *World) Prove(workload, method, htu, accessToken string) (string, error) {
+	kf, ok := w.WL[workload]
+	if !ok {
+		return "", errUnknownWorkload
+	}
+	return dpop.Prove(kf, method, htu, accessToken, w.Now)
 }
 
 func short(id string) string {

@@ -11,7 +11,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
 
-var version = "v0.5.0"
+var version = "v0.6.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -71,7 +71,7 @@ func usage() {
 
 Commands:
   serve                 Run the STS (loopback default; SIGHUP reloads registry and keys)
-  visor-gateway         Identity PEP in front of mcp-visor (verified --client-id)
+  visor-gateway         Identity PEP in front of mcp-visor (verified --client-id, DPoP)
 
   registry lint FILE    Strict-decode and validate a registry JSON file
   token inspect TOKEN   Decode a JWT without verifying the signature

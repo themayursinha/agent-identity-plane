@@ -9,7 +9,8 @@ Agent Identity Plane fills that gap **without modifying mcp-visor**:
 
 1. Agents obtain a next-hop token from this STS (`aud` = the visor-gateway).
 2. `agent-identity-plane visor-gateway` verifies the Bearer token (JWKS
-   file or `https` URL, re-fetched on each request).
+   file or `https` URL, re-fetched on each request) **and** a `DPoP`
+   proof bound to the token's `cnf.jkt`.
 3. `internal/visoradapter` maps the verified chain:
    - `--client-id` ← acting agent (`act.sub`). `-client-short-name` is
      opt-in and uses the last URI segment; that can collide across prefixes.
@@ -46,7 +47,8 @@ token gate:
 
 Until that lands, visor-gateway is the enforcement point that makes visor
 identity policy meaningful: only a verified chain that is not denylisted
-produces the `--client-id` / `--session-id` you pass to visor.
+and that presents a valid DPoP proof produces the `--client-id` /
+`--session-id` you pass to visor.
 
 ## Mapping example
 

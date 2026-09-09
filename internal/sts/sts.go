@@ -319,6 +319,10 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 		}
 	}
 
+	if wl.JKT == "" {
+		return deny(ReasonInvalidActorToken, "invalid_request", "actor token confirmation key missing")
+	}
+
 	ttl := c.ttl()
 	claims := token.Claims{
 		Iss:      c.Issuer,
@@ -333,6 +337,7 @@ func (c *Config) exchange(ctx context.Context, req ExchangeRequest) outcome {
 		ActChain: newChain,
 		Scope:    issuedScope,
 		Purp:     req.Purp,
+		Cnf:      &token.Confirmation{JKT: wl.JKT},
 	}
 	if claims.Purp == "" {
 		claims.Purp = sub.Purp

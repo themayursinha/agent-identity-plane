@@ -62,6 +62,17 @@ func TestHappyPathActorChain(t *testing.T) {
 	if c2.Depth != 2 {
 		t.Fatalf("depth %d", c2.Depth)
 	}
+	_, minted, err := token.Verify(gw, w.Verifier.Keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := w.WL[scenario.WLInvest].PublicJWK().Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if minted.ConfirmJKT() != want {
+		t.Fatalf("cnf.jkt %s want %s", minted.ConfirmJKT(), want)
+	}
 	if !strings.Contains(c2.Scope, "mcp:github:pr") {
 		t.Fatalf("scope %s", c2.Scope)
 	}

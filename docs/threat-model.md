@@ -31,6 +31,7 @@ This document is an engineering threat model, not a compliance claim.
 | `alg=none` / alg confusion | Header alg must match JWK type | verify fail |
 | Missing attribution | Audit record before HTTP response (AI8) | n/a |
 | Spoofed visor `--client-id` at the gateway | visor-gateway verifies Bearer and overwrites `X-Visor-*` after hop-by-hop strip (AI16) | `missing_bearer` / `invalid_token` / `incomplete_chain` |
+| Stolen minted JWT presented at visor-gateway | DPoP bound to `cnf.jkt` of the actor-token key (AI19) | `missing_dpop` / `invalid_dpop_proof` / `replayed_dpop` / `missing_cnf` |
 | Unspecified bind | `ValidateBind` (AI11) | process error |
 | Cleartext or empty live JWT-SVID JWKS | URL policy + empty-JWKS fail-closed (AI17) | process error / `/readyz` 503 |
 | Subverted but still-registered agent | Exact-ID denylist at mint and visor-gateway (AI18) | `agent_denied` / `workload_denied` / `principal_denied` |
@@ -40,12 +41,12 @@ This document is an engineering threat model, not a compliance claim.
 - Not a live SPIRE Workload API or node attestor. JWT-SVID verification is JWKS-based (file, `https` URL, or OIDC discovery).
 - Not a host sandbox. A compromised workload that *is* registered for an agent can mint tokens for that agent until the workload or agent is denylisted.
 - Not mcp-visor action policy. A valid actor chain can still be denied by visor tool rules.
-- Revocation is TTL + durable `jti` replay at exchange plus an exact-ID denylist (agents, workloads, principals) at mint and at visor-gateway. Already-minted tokens are stopped at the PEP when the gateway re-reads the denylist; they are not proof-of-possession tokens.
-- Proof-of-possession (WPT / DPoP) is not implemented; minted tokens are bearer tokens with short TTL and single audience. That residual risk is accepted for v0.5; this is not a Production identity plane.
+- Revocation is TTL + durable `jti` replay at exchange plus an exact-ID denylist (agents, workloads, principals) at mint and at visor-gateway. Already-minted tokens are stopped at the PEP when the gateway re-reads the denylist.
+- visor-gateway requires RFC 9449 DPoP bound to minted `cnf.jkt` (the actor-token verification key for that hop). There is no DPoP nonce. STS exchange still uses `actor_token`, not DPoP. This is not a Production identity plane.
 - visor-gateway `-backend` is an HTTP reverse-proxy. mcp-visor `serve` is stdio; use `-identity-only` and start visor with the derived `--client-id` / `--session-id`.
 - `-client-short-name` is opt-in. Last URI segments are not unique across prefixes; the default client-id is the full `act.sub`.
 - Cross-domain federation (OAuth Identity Chaining) is not implemented.
 
 ## Residual risk
 
-A process that holds a valid workload key and a valid inbound subject token can mint the next hop until TTL/depth/scope **or the denylist** stop it. Detecting a *subverted but correctly attested* agent still needs that operator-supplied denylist (or visor policy). This repo does not invent a host sandbox. Tokens remain bearer: theft of a minted JWT works until TTL or until visor-gateway sees the hop on the denylist.
+A process that holds a valid workload key and a valid inbound subject token can mint the next hop until TTL/depth/scope **or the denylist** stop it. Detecting a *subverted but correctly attested* agent still needs that operator-supplied denylist (or visor policy). This repo does not invent a host sandbox. Theft of a minted JWT without the workload private key is stopped at visor-gateway by DPoP. Replay of a DPoP proof is stopped while `-dpop-replay` retains the proof `jti`. Without a nonce, an intercepted proof can be replayed only until that cache expires (`iat + ClockSkew`) or the process loses the log.

@@ -253,3 +253,29 @@ func TestGoldenVectorStable(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestJWKThumbprintRFC7638RSA(t *testing.T) {
+	j := JWK{
+		Kty: "RSA",
+		N:   "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
+		E:   "AQAB",
+		Alg: "RS256",
+		KID: "2011-04-29",
+	}
+	got, err := j.Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
+	if got != want {
+		t.Fatalf("thumbprint %s want %s", got, want)
+	}
+	j.Use = "sig"
+	got2, err := j.Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2 != want {
+		t.Fatalf("optional members must not change thumbprint: %s", got2)
+	}
+}

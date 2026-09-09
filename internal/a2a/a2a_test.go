@@ -12,6 +12,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
 	"github.com/themayursinha/agent-identity-plane/internal/scenario"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
+	"github.com/themayursinha/agent-identity-plane/internal/token"
 )
 
 func TestMiddlewareAndTripper(t *testing.T) {
@@ -59,6 +60,9 @@ func TestMiddlewareAndTripper(t *testing.T) {
 	seen := ""
 	dest := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		seen = r.Header.Get("Authorization")
+		if r.Header.Get("DPoP") == "" {
+			t.Error("missing DPoP")
+		}
 		rw.WriteHeader(204)
 	}))
 	t.Cleanup(dest.Close)
@@ -69,6 +73,10 @@ func TestMiddlewareAndTripper(t *testing.T) {
 		ActorToken: func(ctx context.Context) (string, error) {
 			return actor, nil
 		},
+		ProofKey: func(ctx context.Context) (*token.KeyFile, error) {
+			return w.WL[scenario.WLOncall], nil
+		},
+		Now: func() time.Time { return w.Now },
 	}}
 	ctx := WithSubjectToken(context.Background(), user)
 	req2, _ := http.NewRequestWithContext(ctx, http.MethodGet, dest.URL, nil)

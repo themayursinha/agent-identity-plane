@@ -145,5 +145,21 @@ Agent and workload entries must be parseable URIs (scheme and host).
 Owned denylist JSON is strict-decoded. Empty lists are valid.
 Agent, workload, and principal IDs contain no Unicode whitespace.
 Unreadable denylist fails closed. The path must not alias other
-exclusive identity files. This is not DPoP and not a Production claim.
+exclusive identity files. This is not a Production claim.
+
+## AI19 — visor-gateway DPoP is bound to minted `cnf.jkt`
+
+Every minted STS token carries `cnf.jkt`, the RFC 7638 thumbprint of
+the JWK that verified the actor token for that hop. visor-gateway
+requires a `DPoP` proof JWT (`typ=dpop+jwt`) whose embedded public JWK
+thumbprint equals that value. `htm` matches the request method. `htu`
+is reconstructed from this request (https iff TLS is present, `Host`,
+escaped path, no query or fragment). `X-Forwarded-*` is not used.
+`ath` is SHA-256 of the access token. `iat` uses the same clock skew
+as minted tokens. Proof `jti` is single-use in `-dpop-replay` through
+`iat + ClockSkew`. The DPoP header JWK must be a public key. Missing
+`cnf`, missing DPoP, invalid proof, or replay is denied with no
+backend forward. `-dpop-replay` must not alias other exclusive
+identity files. This is not a DPoP nonce deployment and not a
+Production claim.
 

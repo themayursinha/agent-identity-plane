@@ -24,14 +24,15 @@ func main() {
 	shortName := flag.Bool("client-short-name", false, "opt-in last URI segment as visor client-id (can collide across prefixes)")
 	auditPath := flag.String("audit-log", "", "audit JSONL (required)")
 	denyPath := flag.String("denylist", "", "denylist JSON (required)")
+	dpopPath := flag.String("dpop-replay", "", "DPoP proof jti log (required)")
 	flag.Parse()
 
 	if err := sts.ValidateBind(*listen); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	if *auditPath == "" || *denyPath == "" {
-		fmt.Fprintln(os.Stderr, "error: -audit-log and -denylist are required")
+	if *auditPath == "" || *denyPath == "" || *dpopPath == "" {
+		fmt.Fprintln(os.Stderr, "error: -audit-log, -denylist, and -dpop-replay are required")
 		os.Exit(1)
 	}
 	fn, err := verify.LiveJWKS(*jwksPath, *jwksURL)
@@ -50,6 +51,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+	proofs, err := sts.OpenReplayCache(*dpopPath, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	defer proofs.Close()
 	cfg := &gateway.Config{
 		Bind:         *listen,
 		Audience:     *audience,
@@ -58,6 +65,7 @@ func main() {
 		IdentityOnly: *identityOnly,
 		ShortName:    *shortName,
 		DenylistFn:   dlFn,
+		ProofReplay:  proofs,
 	}
 	if *backend != "" {
 		u, err := url.Parse(*backend)

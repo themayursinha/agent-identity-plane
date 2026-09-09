@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
+	"github.com/themayursinha/agent-identity-plane/internal/dpop"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
+	"github.com/themayursinha/agent-identity-plane/internal/token"
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
 
@@ -136,6 +139,8 @@ type Tripper struct {
 	ActorToken func(ctx context.Context) (string, error)
 	Audience   string
 	Scope      string
+	ProofKey   func(ctx context.Context) (*token.KeyFile, error)
+	Now        func() time.Time
 }
 
 func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -171,6 +176,25 @@ func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	clone := req.Clone(req.Context())
 	clone.Header.Set("Authorization", "Bearer "+res.Token)
+	if t.ProofKey != nil {
+		kf, err := t.ProofKey(req.Context())
+		if err != nil {
+			return nil, err
+		}
+		htu, err := dpop.RequestURI(clone)
+		if err != nil {
+			return nil, err
+		}
+		now := time.Now().UTC()
+		if t.Now != nil {
+			now = t.Now()
+		}
+		proof, err := dpop.Prove(kf, clone.Method, htu, res.Token, now)
+		if err != nil {
+			return nil, err
+		}
+		clone.Header.Set("DPoP", proof)
+	}
 	if clone.Body != nil && req.Body != nil && req.GetBody != nil {
 		b, _ := req.GetBody()
 		clone.Body = b

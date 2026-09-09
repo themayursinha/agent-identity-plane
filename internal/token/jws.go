@@ -1,6 +1,7 @@
 package token
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -29,6 +30,7 @@ var (
 	ErrBadSignature     = errors.New("token: bad signature")
 	ErrUnsupportedAlg   = errors.New("token: unsupported alg")
 	ErrUnsupportedCurve = errors.New("token: unsupported curve")
+	ErrThumbprint       = errors.New("token: cannot compute JWK thumbprint")
 )
 
 // Header is a JWS protected header. typ is optional (JWT).
@@ -138,50 +140,108 @@ func ParseUnverified(raw string) (Header, Claims, []byte, error) {
 // Verify checks the compact JWS against the key set. The header alg must
 // match the selected key's type; alg=none is always rejected.
 func Verify(raw string, keys JWKS) (Header, Claims, error) {
+	h, c, _, err := VerifyKey(raw, keys)
+	return h, c, err
+}
+
+// VerifyKey is Verify plus the JWK that satisfied the signature.
+func VerifyKey(raw string, keys JWKS) (Header, Claims, JWK, error) {
 	var zero Header
 	var zeroC Claims
 	parts := strings.Split(raw, ".")
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
-		return zero, zeroC, ErrInvalidToken
+		return zero, zeroC, JWK{}, ErrInvalidToken
 	}
 	hb, err := B64Decode(parts[0])
 	if err != nil {
-		return zero, zeroC, ErrInvalidToken
+		return zero, zeroC, JWK{}, ErrInvalidToken
 	}
 	var h Header
 	if err := json.Unmarshal(hb, &h); err != nil {
-		return zero, zeroC, ErrInvalidToken
+		return zero, zeroC, JWK{}, ErrInvalidToken
 	}
 	if h.Alg == "" || strings.EqualFold(h.Alg, AlgNone) {
-		return zero, zeroC, ErrAlgNone
+		return zero, zeroC, JWK{}, ErrAlgNone
 	}
 	if parts[2] == "" {
-		return zero, zeroC, ErrInvalidToken
+		return zero, zeroC, JWK{}, ErrInvalidToken
 	}
 	jwk, err := selectKey(keys, h.KID, h.Alg)
 	if err != nil {
-		return zero, zeroC, err
+		return zero, zeroC, JWK{}, err
 	}
 	if err := matchAlg(h.Alg, jwk); err != nil {
-		return zero, zeroC, err
+		return zero, zeroC, JWK{}, err
 	}
 	signing := []byte(parts[0] + "." + parts[1])
 	sig, err := B64Decode(parts[2])
 	if err != nil {
-		return zero, zeroC, ErrBadSignature
+		return zero, zeroC, JWK{}, ErrBadSignature
 	}
 	if err := verifySig(h.Alg, jwk, signing, sig); err != nil {
-		return zero, zeroC, err
+		return zero, zeroC, JWK{}, err
 	}
 	pb, err := B64Decode(parts[1])
 	if err != nil {
-		return zero, zeroC, ErrInvalidToken
+		return zero, zeroC, JWK{}, ErrInvalidToken
 	}
 	var c Claims
 	if err := json.Unmarshal(pb, &c); err != nil {
-		return zero, zeroC, ErrInvalidToken
+		return zero, zeroC, JWK{}, ErrInvalidToken
 	}
-	return h, c, nil
+	return h, c, jwk, nil
+}
+
+// Thumbprint is the RFC 7638 SHA-256 JWK thumbprint (base64url, no pad).
+func (j JWK) Thumbprint() (string, error) {
+	members, err := j.thumbprintMembers()
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(members); err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(bytes.TrimSpace(buf.Bytes()))
+	return B64Encode(sum[:]), nil
+}
+
+func (j JWK) thumbprintMembers() (map[string]string, error) {
+	switch j.Kty {
+	case "OKP":
+		if j.Crv == "" || j.X == "" {
+			return nil, ErrThumbprint
+		}
+		return map[string]string{"crv": j.Crv, "kty": "OKP", "x": j.X}, nil
+	case "EC":
+		if j.Crv == "" || j.X == "" || j.Y == "" {
+			return nil, ErrThumbprint
+		}
+		return map[string]string{"crv": j.Crv, "kty": "EC", "x": j.X, "y": j.Y}, nil
+	case "RSA":
+		if j.N == "" || j.E == "" {
+			return nil, ErrThumbprint
+		}
+		return map[string]string{"e": j.E, "kty": "RSA", "n": j.N}, nil
+	default:
+		return nil, ErrThumbprint
+	}
+}
+
+// PublicMembers is the RFC 7638 required public JWK members only.
+func (j JWK) PublicMembers() JWK {
+	switch j.Kty {
+	case "OKP":
+		return JWK{Kty: "OKP", Crv: j.Crv, X: j.X}
+	case "EC":
+		return JWK{Kty: "EC", Crv: j.Crv, X: j.X, Y: j.Y}
+	case "RSA":
+		return JWK{Kty: "RSA", N: j.N, E: j.E}
+	default:
+		return JWK{Kty: j.Kty}
+	}
 }
 
 func selectKey(keys JWKS, kid, alg string) (JWK, error) {

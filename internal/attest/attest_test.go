@@ -38,6 +38,13 @@ func TestLocalKeysAttest(t *testing.T) {
 	if id.ID != kf.Sub {
 		t.Fatalf("id %s", id.ID)
 	}
+	want, err := kf.PublicJWK().Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id.JKT != want {
+		t.Fatalf("jkt %s want %s", id.JKT, want)
+	}
 }
 
 func TestSPIFFEJWTRejectsNonSPIFFE(t *testing.T) {

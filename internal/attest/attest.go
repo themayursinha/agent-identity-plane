@@ -19,6 +19,7 @@ type WorkloadIdentity struct {
 	ID     string
 	Issuer string
 	JTI    string
+	JKT    string // RFC 7638 thumbprint of the actor-token verification key
 }
 
 // WorkloadAttestor verifies an actor_token and returns a workload identity.
@@ -52,7 +53,7 @@ func (l *LocalKeys) Attest(ctx context.Context, actorToken string) (WorkloadIden
 	if err != nil {
 		return WorkloadIdentity{}, ErrUnattested
 	}
-	_, c, err := token.Verify(actorToken, ks)
+	_, c, jwk, err := token.VerifyKey(actorToken, ks)
 	if err != nil {
 		return WorkloadIdentity{}, ErrUnattested
 	}
@@ -67,7 +68,11 @@ func (l *LocalKeys) Attest(ctx context.Context, actorToken string) (WorkloadIden
 			return WorkloadIdentity{}, ErrExpired
 		}
 	}
-	return WorkloadIdentity{ID: c.Sub, Issuer: c.Iss, JTI: c.Jti}, nil
+	jkt, err := jwk.Thumbprint()
+	if err != nil {
+		return WorkloadIdentity{}, ErrUnattested
+	}
+	return WorkloadIdentity{ID: c.Sub, Issuer: c.Iss, JTI: c.Jti, JKT: jkt}, nil
 }
 
 // SPIFFEJWT verifies JWT-SVIDs against a JWKS bundle (file) or a live
@@ -102,7 +107,7 @@ func (s *SPIFFEJWT) Attest(ctx context.Context, actorToken string) (WorkloadIden
 	if err != nil {
 		return WorkloadIdentity{}, ErrUnattested
 	}
-	_, c, err := token.Verify(actorToken, ks)
+	_, c, jwk, err := token.VerifyKey(actorToken, ks)
 	if err != nil {
 		return WorkloadIdentity{}, ErrUnattested
 	}
@@ -123,7 +128,11 @@ func (s *SPIFFEJWT) Attest(ctx context.Context, actorToken string) (WorkloadIden
 	if s.Now != nil && (c.Exp == 0 || s.Now() > c.Exp) {
 		return WorkloadIdentity{}, ErrExpired
 	}
-	return WorkloadIdentity{ID: c.Sub, Issuer: c.Iss, JTI: c.Jti}, nil
+	jkt, err := jwk.Thumbprint()
+	if err != nil {
+		return WorkloadIdentity{}, ErrUnattested
+	}
+	return WorkloadIdentity{ID: c.Sub, Issuer: c.Iss, JTI: c.Jti, JKT: jkt}, nil
 }
 
 // FirstSuccessful tries attestors in order and returns the first success.
