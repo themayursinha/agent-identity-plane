@@ -98,6 +98,39 @@ func TestReplaySurvivesRestart(t *testing.T) {
 	}
 }
 
+func TestConsumeRejectsLegacyUnprefixedAlias(t *testing.T) {
+	now := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	c := sts.NewReplayCache(func() time.Time { return now })
+	exp := now.Add(2 * time.Minute).Unix()
+	if err := c.Consume("dpop-legacy", exp); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Consume("dpop:dpop-legacy", exp, "dpop-legacy"); err != sts.ErrReplay {
+		t.Fatalf("got %v want ErrReplay", err)
+	}
+}
+
+func TestReplayRecoverOccupiesLegacyProofJTI(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "replay.jsonl")
+	now := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	until := now.Add(2 * time.Minute).Unix()
+	line, err := json.Marshal(map[string]any{"jti": "dpop-legacy", "until": until})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(line, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := sts.OpenReplayCache(path, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	if err := c.Consume("dpop:dpop-legacy", now.Add(time.Minute).Unix(), "dpop-legacy"); err != sts.ErrReplay {
+		t.Fatalf("got %v want ErrReplay", err)
+	}
+}
+
 func TestReplayRejectsForeignJSONL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mixed.jsonl")
 	if err := os.WriteFile(path, []byte(`{"event_type":"token_denied","reason_code":"ok"}`+"\n"), 0o600); err != nil {

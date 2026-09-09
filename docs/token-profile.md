@@ -27,6 +27,7 @@ RS256 so JWT-SVIDs from a SPIRE OIDC JWKS bundle can be used as actor tokens.
 | `actchain` | Flat prior actors (incoming `actchain` + incoming `act`) |
 | `scope` | Space-separated; only narrows |
 | `purp` | Optional intent, copied if unset |
+| `cnf.jkt` | RFC 7638 SHA-256 thumbprint of a workload-possessed DPoP key (localkeys verifying JWK, or token-endpoint DPoP) |
 
 First-hop user tokens come from a trusted IdP JWKS. They MUST have `aud` equal
 to the requesting `agent_id` and MUST NOT carry `act` / `actchain`.

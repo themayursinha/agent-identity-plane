@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
@@ -16,6 +17,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/a2a"
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
 	"github.com/themayursinha/agent-identity-plane/internal/denylist"
+	"github.com/themayursinha/agent-identity-plane/internal/dpop"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 	"github.com/themayursinha/agent-identity-plane/internal/visoradapter"
@@ -29,6 +31,11 @@ const (
 	ReasonRateLimited  = "rate_limited"
 	ReasonNotReady     = "jwks_unavailable"
 	ReasonAuditFailed  = "audit_unavailable"
+	ReasonMissingDPoP  = "missing_dpop"
+	ReasonInvalidDPoP  = "invalid_dpop_proof"
+	ReasonReplayedDPoP = "replayed_dpop"
+	ReasonMissingCNF   = "missing_cnf"
+	ReasonDPoPUnavail  = "dpop_unavailable"
 )
 
 const (
@@ -57,6 +64,7 @@ type Config struct {
 	TLSCertFile  string
 	TLSKeyFile   string
 	DenylistFn   func() (*denylist.List, error)
+	ProofReplay  *sts.ReplayCache
 	Metrics      Metrics
 
 	limiter *tokenBucket
@@ -132,7 +140,7 @@ func (c *Config) handlePEP(w http.ResponseWriter, r *http.Request) {
 		c.writeDeny(w, http.StatusTooManyRequests, ReasonRateLimited, "rate limited", nil)
 		return
 	}
-	raw := a2a.BearerToken(r.Header.Get("Authorization"))
+	raw := a2a.AccessToken(r.Header.Get("Authorization"))
 	if raw == "" {
 		c.writeDeny(w, http.StatusUnauthorized, ReasonMissingToken, "missing bearer token", nil)
 		return
@@ -152,6 +160,9 @@ func (c *Config) handlePEP(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if reason != "" {
 		c.writeDeny(w, http.StatusUnauthorized, reason, reason, &m)
+		return
+	}
+	if err := c.requireDPoP(w, r, raw, chain, &m); err != nil {
 		return
 	}
 	if err := c.record(audit.Event{
@@ -218,6 +229,45 @@ func (c *Config) denyIdentity(m visoradapter.Mapping) (string, error) {
 	return d.DenyChain(m.Principal, m.ActingAgent, m.Hops), nil
 }
 
+func (c *Config) requireDPoP(w http.ResponseWriter, r *http.Request, accessToken string, chain verify.ActorChain, m *visoradapter.Mapping) error {
+	jkt := chain.Claims.ConfirmJKT()
+	if jkt == "" {
+		c.writeDenyDPoP(w, http.StatusUnauthorized, ReasonMissingCNF, "missing confirmation key", m)
+		return errors.New(ReasonMissingCNF)
+	}
+	if c.ProofReplay == nil {
+		c.writeDenyDPoP(w, http.StatusServiceUnavailable, ReasonDPoPUnavail, "dpop replay cache required", m)
+		return errors.New(ReasonDPoPUnavail)
+	}
+	now := time.Now().UTC()
+	if c.Verifier != nil && c.Verifier.Now != nil {
+		now = c.Verifier.Now()
+	}
+	proof, err := dpop.Verify(r, accessToken, jkt, now)
+	if err != nil {
+		if errors.Is(err, dpop.ErrMissingProof) {
+			c.writeDenyDPoP(w, http.StatusUnauthorized, ReasonMissingDPoP, err.Error(), m)
+			return err
+		}
+		c.writeDenyDPoP(w, http.StatusUnauthorized, ReasonInvalidDPoP, err.Error(), m)
+		return err
+	}
+	if err := c.ProofReplay.Consume(dpop.ReplayJTI(proof.JTI), proof.IAT, proof.JTI); err != nil {
+		if errors.Is(err, sts.ErrReplay) {
+			c.writeDenyDPoP(w, http.StatusUnauthorized, ReasonReplayedDPoP, "dpop proof jti already used", m)
+			return err
+		}
+		c.writeDenyDPoP(w, http.StatusServiceUnavailable, ReasonDPoPUnavail, err.Error(), m)
+		return err
+	}
+	return nil
+}
+
+func (c *Config) writeDenyDPoP(w http.ResponseWriter, status int, reason, desc string, m *visoradapter.Mapping) {
+	w.Header().Set("WWW-Authenticate", `DPoP algs="EdDSA ES256 RS256"`)
+	c.writeDeny(w, status, reason, desc, m)
+}
+
 func (c *Config) writeDeny(w http.ResponseWriter, status int, reason, desc string, m *visoradapter.Mapping) {
 	ev := audit.Event{
 		EventType:  "identity_denied",
@@ -265,6 +315,9 @@ func NewServer(cfg *Config) (*Server, error) {
 	}
 	if cfg.Audit == nil {
 		return nil, fmt.Errorf("gateway: audit required")
+	}
+	if cfg.ProofReplay == nil {
+		return nil, fmt.Errorf("gateway: DPoP replay cache required")
 	}
 	if !cfg.IdentityOnly && cfg.Backend == nil {
 		return nil, fmt.Errorf("gateway: -backend or -identity-only is required")

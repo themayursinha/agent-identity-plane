@@ -27,6 +27,7 @@ visor-gateway --verified --client-id / --session-id--> mcp-visor --policy--> MCP
 | `internal/gateway` | visor-gateway identity PEP (verify, denylist, audit, reverse-proxy) |
 | `internal/visoradapter` | Map a verified chain to mcp-visor identity fields |
 | `internal/denylist` | Exact-ID agent/workload/principal revocation list |
+| `internal/dpop` | RFC 9449 DPoP proofs at visor-gateway |
 
 ## Token exchange
 
@@ -45,7 +46,8 @@ tokens signed by the STS keys are subsequent hops; tokens signed by the IdP
 JWKS are first hops. Cross-signing (IdP key, STS `iss`) is rejected.
 
 Minted claims: immutable `sub` and `txn`, single `aud`, nested RFC 8693 `act`,
-flat `actchain`, narrowed `scope`, `jti`, `exp` (default 120s).
+flat `actchain`, narrowed `scope`, `jti`, `exp` (default 120s), and `cnf.jkt`
+(RFC 7800) of a workload-possessed DPoP key for that hop.
 
 ## Enforcement vs mcp-visor
 
@@ -110,4 +112,26 @@ document of agent, workload, and principal IDs. Matching is exact
 IDs). The STS denies minting; visor-gateway denies a verified chain
 that contains a listed hop so already-minted tokens stop at the PEP.
 SIGHUP publishes denylist with registry and keys. Empty lists are
-valid. This is not DPoP and not a Production identity plane.
+valid. visor-gateway still requires DPoP (v0.6) for hops that are
+not denylisted.
+
+## DPoP at visor-gateway (v0.6)
+
+Minted STS tokens include `cnf.jkt`, the RFC 7638 thumbprint of a
+**workload-possessed** key. For localkeys actor tokens that is the
+verifying JWK. A JWT-SVID is signed by the SPIFFE issuer, so that
+issuer JWK is not `cnf.jkt`; the caller binds a possessed key with a
+token-endpoint DPoP proof (`ath` omitted) on `POST /oauth/token`.
+visor-gateway requires a `DPoP` proof JWT (`typ=dpop+jwt`) whose embedded public JWK
+thumbprint equals `cnf.jkt`. The proof must match this request's
+method (`htm`), reconstructed URI (`htu`: TLS→https else http, `Host`,
+path; no query/fragment; `X-Forwarded-*` ignored), access-token hash
+(`ath`), and `iat` within clock skew. Clients mint proofs with `htu`
+from the outbound URL (scheme+host), not from local TLS state.
+Proof `jti` values are consumed
+in `-dpop-replay` through `iat + ClockSkew`, namespaced (`dpop:` prefix)
+so they cannot collide with STS subject-token jtis if a process shares
+a consume map. Unprefixed proof jtis from an earlier log are still
+treated as occupied until they expire. Missing `cnf`, missing or
+invalid DPoP, or a replayed proof is 401 with no backend. This is not
+a DPoP nonce deployment and not a Production identity plane.

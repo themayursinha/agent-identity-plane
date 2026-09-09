@@ -27,18 +27,32 @@ type Actor struct {
 
 // Claims is the JWT payload minted by the STS and accepted as a subject token.
 type Claims struct {
-	Iss      string   `json:"iss"`
-	Sub      string   `json:"sub"`
-	Aud      Audience `json:"aud,omitempty"`
-	Exp      int64    `json:"exp"`
-	Nbf      int64    `json:"nbf,omitempty"`
-	Iat      int64    `json:"iat,omitempty"`
-	Jti      string   `json:"jti,omitempty"`
-	Txn      string   `json:"txn,omitempty"`
-	Act      *Actor   `json:"act,omitempty"`
-	ActChain []Actor  `json:"actchain,omitempty"`
-	Scope    string   `json:"scope,omitempty"`
-	Purp     string   `json:"purp,omitempty"`
+	Iss      string        `json:"iss"`
+	Sub      string        `json:"sub"`
+	Aud      Audience      `json:"aud,omitempty"`
+	Exp      int64         `json:"exp"`
+	Nbf      int64         `json:"nbf,omitempty"`
+	Iat      int64         `json:"iat,omitempty"`
+	Jti      string        `json:"jti,omitempty"`
+	Txn      string        `json:"txn,omitempty"`
+	Act      *Actor        `json:"act,omitempty"`
+	ActChain []Actor       `json:"actchain,omitempty"`
+	Scope    string        `json:"scope,omitempty"`
+	Purp     string        `json:"purp,omitempty"`
+	Cnf      *Confirmation `json:"cnf,omitempty"`
+}
+
+// Confirmation is RFC 7800 cnf. jkt is the RFC 7638 SHA-256 thumbprint
+// of the actor-token verification key this hop is bound to.
+type Confirmation struct {
+	JKT string `json:"jkt"`
+}
+
+func (c Claims) ConfirmJKT() string {
+	if c.Cnf == nil {
+		return ""
+	}
+	return c.Cnf.JKT
 }
 
 // Audience marshals as a JSON string when it holds a single value (the STS

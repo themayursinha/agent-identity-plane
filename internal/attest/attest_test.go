@@ -38,6 +38,13 @@ func TestLocalKeysAttest(t *testing.T) {
 	if id.ID != kf.Sub {
 		t.Fatalf("id %s", id.ID)
 	}
+	want, err := kf.PublicJWK().Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id.PossessedJKT != want {
+		t.Fatalf("jkt %s want %s", id.PossessedJKT, want)
+	}
 }
 
 func TestSPIFFEJWTRejectsNonSPIFFE(t *testing.T) {
@@ -89,6 +96,9 @@ func TestSPIFFEJWTLiveJWKSAndIssuer(t *testing.T) {
 	}
 	if id.ID != sub {
 		t.Fatalf("id %s", id.ID)
+	}
+	if id.PossessedJKT != "" {
+		t.Fatalf("SPIFFE issuer key must not be a possessed JKT: %s", id.PossessedJKT)
 	}
 	a.Issuer = "https://other.example.test"
 	if _, err := a.Attest(context.Background(), rawTok); err != ErrUnattested {

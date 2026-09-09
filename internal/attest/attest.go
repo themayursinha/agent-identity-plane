@@ -16,9 +16,10 @@ var (
 
 // WorkloadIdentity is the attested compute identity of a caller.
 type WorkloadIdentity struct {
-	ID     string
-	Issuer string
-	JTI    string
+	ID           string
+	Issuer       string
+	JTI          string
+	PossessedJKT string // set only when the verifying JWK is workload-controlled
 }
 
 // WorkloadAttestor verifies an actor_token and returns a workload identity.
@@ -52,7 +53,7 @@ func (l *LocalKeys) Attest(ctx context.Context, actorToken string) (WorkloadIden
 	if err != nil {
 		return WorkloadIdentity{}, ErrUnattested
 	}
-	_, c, err := token.Verify(actorToken, ks)
+	_, c, jwk, err := token.VerifyKey(actorToken, ks)
 	if err != nil {
 		return WorkloadIdentity{}, ErrUnattested
 	}
@@ -67,7 +68,11 @@ func (l *LocalKeys) Attest(ctx context.Context, actorToken string) (WorkloadIden
 			return WorkloadIdentity{}, ErrExpired
 		}
 	}
-	return WorkloadIdentity{ID: c.Sub, Issuer: c.Iss, JTI: c.Jti}, nil
+	jkt, err := jwk.Thumbprint()
+	if err != nil {
+		return WorkloadIdentity{}, ErrUnattested
+	}
+	return WorkloadIdentity{ID: c.Sub, Issuer: c.Iss, JTI: c.Jti, PossessedJKT: jkt}, nil
 }
 
 // SPIFFEJWT verifies JWT-SVIDs against a JWKS bundle (file) or a live
@@ -102,7 +107,7 @@ func (s *SPIFFEJWT) Attest(ctx context.Context, actorToken string) (WorkloadIden
 	if err != nil {
 		return WorkloadIdentity{}, ErrUnattested
 	}
-	_, c, err := token.Verify(actorToken, ks)
+	_, c, jwk, err := token.VerifyKey(actorToken, ks)
 	if err != nil {
 		return WorkloadIdentity{}, ErrUnattested
 	}
@@ -123,6 +128,9 @@ func (s *SPIFFEJWT) Attest(ctx context.Context, actorToken string) (WorkloadIden
 	if s.Now != nil && (c.Exp == 0 || s.Now() > c.Exp) {
 		return WorkloadIdentity{}, ErrExpired
 	}
+	// JWT-SVID signatures are the SPIFFE issuer's key, not a key the
+	// named workload possesses. Do not treat that JWK as cnf.jkt.
+	_ = jwk
 	return WorkloadIdentity{ID: c.Sub, Issuer: c.Iss, JTI: c.Jti}, nil
 }
 

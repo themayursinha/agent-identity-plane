@@ -145,5 +145,28 @@ Agent and workload entries must be parseable URIs (scheme and host).
 Owned denylist JSON is strict-decoded. Empty lists are valid.
 Agent, workload, and principal IDs contain no Unicode whitespace.
 Unreadable denylist fails closed. The path must not alias other
-exclusive identity files. This is not DPoP and not a Production claim.
+exclusive identity files. This is not a Production claim.
+
+## AI19 — visor-gateway DPoP is bound to minted `cnf.jkt`
+
+Every minted STS token carries `cnf.jkt`, the RFC 7638 thumbprint of
+a key the workload possesses. Localkeys actor tokens use the verifying
+JWK. JWT-SVID issuer keys are not possessed: SPIFFE minting binds
+`cnf.jkt` from a token-endpoint DPoP proof, not from the SVID
+signature key. visor-gateway
+requires a `DPoP` proof JWT (`typ=dpop+jwt`) whose embedded public JWK
+thumbprint equals that value. `htm` matches the request method. `htu`
+on the PEP is reconstructed from this request (https iff TLS is present,
+`Host`, escaped path, no query or fragment). `X-Forwarded-*` is not used.
+Callers set proof `htu` from the outbound URL scheme and `Host`
+(`OutboundURI`); local TLS is still nil in `RoundTrip`. `ath` is SHA-256 of the access token. `iat` uses the same clock skew
+as minted tokens. Proof `jti` is single-use in `-dpop-replay` through
+`iat + ClockSkew`. Token-endpoint proofs consumed in the STS replay
+log are namespaced (`dpop:` prefix) so a caller-controlled proof `jti`
+cannot occupy a minted subject-token jti. Unprefixed proof jtis already
+in the log remain occupied until expiry. The DPoP header JWK must be a public key. Missing
+`cnf`, missing DPoP, invalid proof, or replay is denied with no
+backend forward. `-dpop-replay` must not alias other exclusive
+identity files. This is not a DPoP nonce deployment and not a
+Production claim.
 

@@ -2,6 +2,7 @@ package sts_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,8 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/themayursinha/agent-identity-plane/internal/attest"
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
 	"github.com/themayursinha/agent-identity-plane/internal/denylist"
+	"github.com/themayursinha/agent-identity-plane/internal/dpop"
 	"github.com/themayursinha/agent-identity-plane/internal/registry"
 	"github.com/themayursinha/agent-identity-plane/internal/scenario"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
@@ -61,6 +64,17 @@ func TestHappyPathActorChain(t *testing.T) {
 	}
 	if c2.Depth != 2 {
 		t.Fatalf("depth %d", c2.Depth)
+	}
+	_, minted, err := token.Verify(gw, w.Verifier.Keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := w.WL[scenario.WLInvest].PublicJWK().Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if minted.ConfirmJKT() != want {
+		t.Fatalf("cnf.jkt %s want %s", minted.ConfirmJKT(), want)
 	}
 	if !strings.Contains(c2.Scope, "mcp:github:pr") {
 		t.Fatalf("scope %s", c2.Scope)
@@ -218,6 +232,94 @@ func TestHTTPExchange(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
+	var doc map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc["token_type"] != "DPoP" {
+		t.Fatalf("token_type %v", doc["token_type"])
+	}
+}
+
+func TestHTTPTokenEndpointProofJTIDoesNotPoisonSubjectReplay(t *testing.T) {
+	w := testWorld(t)
+	ts := httptest.NewServer(w.STS.Handler())
+	t.Cleanup(ts.Close)
+	user, err := w.UserToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor, err := w.ActorToken(scenario.WLOncall)
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{}
+	form.Set("grant_type", sts.GrantTokenExchange)
+	form.Set("subject_token", user)
+	form.Set("actor_token", actor)
+	form.Set("audience", scenario.Invest)
+	form.Set("agent_id", scenario.Oncall)
+	form.Set("scope", "mcp:github:pr")
+	resp, err := http.Post(ts.URL+"/oauth/token", "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var minted struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&minted); err != nil {
+		t.Fatal(err)
+	}
+	_, claims, _, err := token.ParseUnverified(minted.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof, err := signProofJTI(w.WL[scenario.WLOncall], http.MethodPost, "http://sts.test/oauth/token", claims.Jti, w.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	poison := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader("grant_type="+sts.GrantTokenExchange))
+	poison.Host = "sts.test"
+	poison.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	poison.Header.Set("DPoP", proof)
+	pr := httptest.NewRecorder()
+	w.STS.Handler().ServeHTTP(pr, poison)
+	if pr.Code == 200 {
+		t.Fatal("poisoned request minted")
+	}
+	next := w.Exchange(scenario.Invest, scenario.WLInvest, minted.AccessToken, scenario.Gateway, "mcp:github:pr")
+	if next.ReasonCode != sts.ReasonOK {
+		t.Fatalf("subject poisoned: %s %s", next.ReasonCode, next.ErrorDesc)
+	}
+}
+
+func signProofJTI(kf *token.KeyFile, method, htu, jti string, now time.Time) (string, error) {
+	s, err := token.SignerFromKeyFile(kf)
+	if err != nil {
+		return "", err
+	}
+	header, err := json.Marshal(struct {
+		Alg string    `json:"alg"`
+		Typ string    `json:"typ"`
+		JWK token.JWK `json:"jwk"`
+	}{Alg: token.AlgEdDSA, Typ: dpop.Typ, JWK: s.PublicJWK().PublicMembers()})
+	if err != nil {
+		return "", err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"jti": jti,
+		"htm": method,
+		"htu": htu,
+		"iat": now.Unix(),
+	})
+	if err != nil {
+		return "", err
+	}
+	return s.Sign(header, payload)
 }
 
 func TestNewServerRejectsUnspecified(t *testing.T) {
@@ -267,5 +369,71 @@ func TestDenylistBlocksAgentWorkloadPrincipal(t *testing.T) {
 	res = w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
 	if res.ReasonCode != sts.ReasonPrincipalDenied || res.Token != "" {
 		t.Fatalf("principal: %s token=%q", res.ReasonCode, res.Token)
+	}
+}
+
+func TestSPIFFEIssuerKeyIsNotConfirmation(t *testing.T) {
+	w := testWorld(t)
+	issuer, err := token.GenerateEd25519("spire")
+	if err != nil {
+		t.Fatal(err)
+	}
+	issSigner, err := token.SignerFromKeyFile(issuer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svid, err := issSigner.SignClaims(token.Claims{
+		Iss: "https://spire.example.test",
+		Sub: scenario.WLOncall,
+		Aud: token.Audience{scenario.Issuer},
+		Exp: w.Now.Add(time.Minute).Unix(),
+		Iat: w.Now.Unix(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.STS.Attestor = &attest.SPIFFEJWT{
+		Bundle:   issSigner.JWKS(),
+		Audience: scenario.Issuer,
+		Now:      func() int64 { return w.Now.Unix() },
+	}
+	user, err := w.UserToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := sts.ExchangeRequest{
+		GrantType:    sts.GrantTokenExchange,
+		SubjectToken: user,
+		ActorToken:   svid,
+		Audience:     scenario.Invest,
+		AgentID:      scenario.Oncall,
+		Scope:        "mcp:github:pr",
+	}
+	res := w.STS.Exchange(context.Background(), req)
+	if res.ReasonCode != sts.ReasonMissingCNF || res.Token != "" {
+		t.Fatalf("got %s %s token=%q", res.ReasonCode, res.ErrorDesc, res.Token)
+	}
+	pop, err := token.GenerateEd25519("wl-pop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jkt, err := pop.PublicJWK().Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.ConfirmJKT = jkt
+	res = w.STS.Exchange(context.Background(), req)
+	if res.ReasonCode != sts.ReasonOK {
+		t.Fatalf("got %s %s", res.ReasonCode, res.ErrorDesc)
+	}
+	if res.Issued.ConfirmJKT() != jkt {
+		t.Fatalf("cnf %s want %s", res.Issued.ConfirmJKT(), jkt)
+	}
+	issuerJKT, err := issuer.PublicJWK().Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Issued.ConfirmJKT() == issuerJKT {
+		t.Fatal("cnf.jkt must not be the SPIFFE issuer key")
 	}
 }

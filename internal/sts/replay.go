@@ -95,9 +95,10 @@ func (c *ReplayCache) recover() error {
 }
 
 // Consume records jti through the verification-skew deadline. A second
-// Consume before that deadline is a replay. Missing cache or a failed
-// durable write fail closed (no mint).
-func (c *ReplayCache) Consume(jti string, exp int64) error {
+// Consume before that deadline is a replay. aliases are additional keys
+// treated as already consumed (legacy encodings) but are not rewritten.
+// Missing cache or a failed durable write fail closed (no mint).
+func (c *ReplayCache) Consume(jti string, exp int64, aliases ...string) error {
 	if c == nil {
 		return ErrReplayUnavailable
 	}
@@ -109,8 +110,13 @@ func (c *ReplayCache) Consume(jti string, exp int64) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.purgeLocked(now)
-	if stored, ok := c.seen[jti]; ok && stored >= now.Unix() {
-		return ErrReplay
+	for _, k := range append([]string{jti}, aliases...) {
+		if k == "" {
+			continue
+		}
+		if stored, ok := c.seen[k]; ok && stored >= now.Unix() {
+			return ErrReplay
+		}
 	}
 	if until < now.Unix() {
 		return ErrReplay

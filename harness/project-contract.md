@@ -54,7 +54,8 @@ hop-by-hop stripping (client-id is the full `act.sub` unless
 `-client-short-name` is set), and does not forward the STS Bearer.
 It reverse-proxies to `-backend` (or returns the mapping with
 `-identity-only`). Audit writes fail closed. `-denylist` is required
-and re-read on each verify. JWKS URLs must be
+and re-read on each verify. visor-gateway requires a DPoP proof bound
+to minted `cnf.jkt` and a durable `-dpop-replay` log. JWKS URLs must be
 `https` except loopback `http`. visor itself is unchanged.
 
 A deny is an authorization result (HTTP 400 with `error` / `error_description`

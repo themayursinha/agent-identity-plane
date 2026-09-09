@@ -1,0 +1,21 @@
+{
+  "task_id": "T-AIP-005-dpop-pep",
+  "invariant_ids": ["AI8", "AI16", "AI19"],
+  "security_sensitive": true,
+  "security_problem": "A stolen minted next-hop JWT is a bearer token at visor-gateway. Without proof-of-possession, theft of the compact JWS is enough to spoof --client-id until TTL or denylist. X-Forwarded-Proto must not become htu. DPoP jti must not be reusable. Private key material in the DPoP header jwk must be rejected.",
+  "required_behavior": "Minted STS tokens include cnf.jkt of the actor-token verification key. visor-gateway requires a DPoP proof whose public JWK thumbprint equals cnf.jkt, with htm matching the method, htu reconstructed from this request (TLS, Host, path; no query/fragment; X-Forwarded-* ignored), ath matching SHA-256 of the access token, iat within clock skew, and jti consumed in -dpop-replay through iat+ClockSkew before allow. Missing cnf, missing DPoP, invalid proof, or replay is 401 with no backend. NewServer and the visor-gateway command require the replay cache.",
+  "failure_behavior": "Fail closed: unreadable or aliased -dpop-replay, missing ProofReplay, and failed durable writes produce HTTP 503 or a process error and no backend forward.",
+  "max_attempts": 3,
+  "required_commands": [
+    {
+      "name": "target_test",
+      "expect": "pass",
+      "argv": ["go", "test", "./internal/dpop/...", "./internal/token/...", "./internal/sts/...", "./internal/gateway/...", "./internal/a2a/...", "./cmd/agent-identity-plane/...", "-count", "1"]
+    },
+    {
+      "name": "harness",
+      "expect": "pass",
+      "argv": ["harness/check.sh"]
+    }
+  ]
+}

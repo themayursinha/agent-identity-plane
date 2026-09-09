@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
+	"github.com/themayursinha/agent-identity-plane/internal/dpop"
 	"github.com/themayursinha/agent-identity-plane/internal/sts"
+	"github.com/themayursinha/agent-identity-plane/internal/token"
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
 
@@ -58,6 +61,8 @@ type Exchanger interface {
 type HTTPExchanger struct {
 	Endpoint string
 	Client   *http.Client
+	ProofKey func(ctx context.Context) (*token.KeyFile, error)
+	Now      func() time.Time
 }
 
 func (h HTTPExchanger) Exchange(ctx context.Context, req sts.ExchangeRequest) (sts.ExchangeResult, error) {
@@ -84,6 +89,25 @@ func (h HTTPExchanger) Exchange(ctx context.Context, req sts.ExchangeRequest) (s
 		return sts.ExchangeResult{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if h.ProofKey != nil {
+		kf, err := h.ProofKey(ctx)
+		if err != nil {
+			return sts.ExchangeResult{}, err
+		}
+		htu, err := dpop.OutboundURI(httpReq)
+		if err != nil {
+			return sts.ExchangeResult{}, err
+		}
+		now := time.Now().UTC()
+		if h.Now != nil {
+			now = h.Now()
+		}
+		proof, err := dpop.Prove(kf, http.MethodPost, htu, "", now)
+		if err != nil {
+			return sts.ExchangeResult{}, err
+		}
+		httpReq.Header.Set("DPoP", proof)
+	}
 	resp, err := cl.Do(httpReq)
 	if err != nil {
 		return sts.ExchangeResult{}, err
@@ -128,7 +152,8 @@ func (l LocalExchanger) Exchange(ctx context.Context, req sts.ExchangeRequest) (
 }
 
 // Tripper is an http.RoundTripper that exchanges for the destination
-// audience and injects Authorization: Bearer.
+// audience and injects Authorization. Resource DPoP uses the DPoP
+// scheme (RFC 9449); hops without a proof key use Bearer.
 type Tripper struct {
 	Base       http.RoundTripper
 	Exchanger  Exchanger
@@ -136,6 +161,8 @@ type Tripper struct {
 	ActorToken func(ctx context.Context) (string, error)
 	Audience   string
 	Scope      string
+	ProofKey   func(ctx context.Context) (*token.KeyFile, error)
+	Now        func() time.Time
 }
 
 func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -170,7 +197,30 @@ func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	clone := req.Clone(req.Context())
-	clone.Header.Set("Authorization", "Bearer "+res.Token)
+	scheme := "Bearer"
+	if t.ProofKey != nil {
+		scheme = "DPoP"
+	}
+	clone.Header.Set("Authorization", scheme+" "+res.Token)
+	if t.ProofKey != nil {
+		kf, err := t.ProofKey(req.Context())
+		if err != nil {
+			return nil, err
+		}
+		htu, err := dpop.OutboundURI(clone)
+		if err != nil {
+			return nil, err
+		}
+		now := time.Now().UTC()
+		if t.Now != nil {
+			now = t.Now()
+		}
+		proof, err := dpop.Prove(kf, clone.Method, htu, res.Token, now)
+		if err != nil {
+			return nil, err
+		}
+		clone.Header.Set("DPoP", proof)
+	}
 	if clone.Body != nil && req.Body != nil && req.GetBody != nil {
 		b, _ := req.GetBody()
 		clone.Body = b
@@ -184,7 +234,7 @@ func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
 func Middleware(v *verify.Verifier, audience string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			raw := BearerToken(r.Header.Get("Authorization"))
+			raw := AccessToken(r.Header.Get("Authorization"))
 			if raw == "" {
 				http.Error(w, "missing bearer token", http.StatusUnauthorized)
 				return
@@ -201,10 +251,18 @@ func Middleware(v *verify.Verifier, audience string) func(http.Handler) http.Han
 	}
 }
 
-func BearerToken(h string) string {
-	const p = "Bearer "
-	if len(h) > len(p) && strings.EqualFold(h[:len(p)], p) {
-		return strings.TrimSpace(h[len(p):])
+// AccessToken returns the credential from Authorization Bearer or DPoP.
+func AccessToken(h string) string {
+	h = strings.TrimSpace(h)
+	for _, p := range []string{"Bearer ", "DPoP "} {
+		if len(h) > len(p) && strings.EqualFold(h[:len(p)], p) {
+			return strings.TrimSpace(h[len(p):])
+		}
 	}
 	return ""
+}
+
+// BearerToken is AccessToken.
+func BearerToken(h string) string {
+	return AccessToken(h)
 }

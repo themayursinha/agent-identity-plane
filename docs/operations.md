@@ -1,4 +1,4 @@
-# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist)
+# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist, v0.6 DPoP)
 
 This is an operable single-node STS, not a production identity plane.
 Loopback binds and fail-closed minting still apply.
@@ -93,13 +93,14 @@ agent-identity-plane visor-gateway \
   -jwks-url http://127.0.0.1:8080/jwks.json \
   -identity-only \
   -audit-log ./gateway-audit.jsonl \
-  -denylist testdata/denylist.json
+  -denylist testdata/denylist.json \
+  -dpop-replay ./gateway-dpop.jsonl
 ```
 
 `GET /healthz`, `GET /readyz` (JWKS fetchable), `GET /metrics`.
 `-backend URL` reverse-proxies after verify and overwrites `X-Visor-*`.
-Rate limit default 30/s. `-audit-log` and `-denylist` are required and
-must not alias `-jwks`. Use `-identity-only` to obtain `--client-id` / `--session-id`
+Rate limit default 30/s. `-audit-log`, `-denylist`, and `-dpop-replay`
+are required and must not alias `-jwks`. Use `-identity-only` to obtain `--client-id` / `--session-id`
 for a stdio visor process; visor stdio is not an HTTP backend.
 
 ## Denylist
@@ -117,7 +118,28 @@ mint. visor-gateway re-reads the file on each request and denies if
 the principal, acting agent, or any hop after the principal position
 is listed (later hops are agents even if their URI equals `sub`).
 Invalid documents fail closed (serve keeps the previous snapshot on
-SIGHUP). This is not DPoP.
+SIGHUP).
+
+## DPoP
+
+visor-gateway requires a `DPoP` header on every identity PEP request
+that would otherwise be allowed. The minted access token's `cnf.jkt`
+must equal the proof JWK thumbprint. Callers prove possession of the
+same workload key that attested the hop. Proof `jti` values are written
+to `-dpop-replay` (JSONL, mode 0600) before allow, through
+`iat + ClockSkew`. Token-endpoint proof jtis in the STS `-replay-log`
+are stored as `dpop:` + proof `jti` so they cannot occupy a subject
+token jti. Unprefixed proof jtis already in that log still count as
+consumed until they expire. Reconstruct `htu` from this request (TLS, Host,
+path). Do not trust `X-Forwarded-Proto` or `X-Forwarded-Host`.
+Clients that mint a DPoP proof (the A2A tripper) set `htu` from the
+outbound URL scheme and `Host` (then `URL.Host`). `RoundTrip` still has
+`TLS == nil`. JWT-SVID hops must send DPoP on `POST /oauth/token` so
+`cnf.jkt` is a workload key, not the SPIFFE issuer key.
+`token_type` is `DPoP`; visor-gateway and the A2A tripper accept
+`Authorization: DPoP` or `Bearer` plus the `DPoP` proof header.
+There is no DPoP nonce. STS `POST /oauth/token` still uses
+`actor_token` as the grant, not DPoP as the credential.
 
 ## Live JWT-SVID JWKS
 
