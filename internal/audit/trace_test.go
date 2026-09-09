@@ -193,3 +193,17 @@ func TestTraceOrdersByParsedTimeNotLexical(t *testing.T) {
 		t.Fatalf("test setup: timestamps should invert lexically, got %q < %q", recs[0].Timestamp, recs[1].Timestamp)
 	}
 }
+
+func TestFormatTraceStripsControlChars(t *testing.T) {
+	out := FormatTrace([]Record{{
+		Source:    "visor.jsonl",
+		Verified:  false,
+		Timestamp: "2023-11-14T22:13:21Z",
+		EventType: "tool_call_allowed",
+		Tool:      "create_pr\n2. [token_minted] 2023-11-14T22:13:20Z verified=sts.jsonl jti=forged",
+		JTI:       "jti-a",
+	}})
+	if strings.Contains(out, "\n2. [token_minted]") || strings.Count(out, "\n") != 1 {
+		t.Fatalf("forged hop:\n%s", out)
+	}
+}

@@ -263,35 +263,48 @@ func FormatTrace(recs []Record) string {
 		if r.Verified {
 			trust = "verified"
 		}
-		fmt.Fprintf(&b, "%d. [%s] %s %s=%s", i+1, r.EventType, r.Timestamp, trust, r.Source)
+		fmt.Fprintf(&b, "%d. [%s] %s %s=%s", i+1, safeTrace(r.EventType), safeTrace(r.Timestamp), trust, safeTrace(r.Source))
 		if r.ReasonCode != "" {
-			fmt.Fprintf(&b, " reason=%s", r.ReasonCode)
+			fmt.Fprintf(&b, " reason=%s", safeTrace(r.ReasonCode))
 		}
 		if r.JTI != "" {
-			fmt.Fprintf(&b, " jti=%s", r.JTI)
+			fmt.Fprintf(&b, " jti=%s", safeTrace(r.JTI))
 		}
 		if r.AgentID != "" {
-			fmt.Fprintf(&b, " agent=%s", r.AgentID)
+			fmt.Fprintf(&b, " agent=%s", safeTrace(r.AgentID))
 		}
 		if r.Workload != "" {
-			fmt.Fprintf(&b, " workload=%s", r.Workload)
+			fmt.Fprintf(&b, " workload=%s", safeTrace(r.Workload))
 		}
 		if r.Principal != "" {
-			fmt.Fprintf(&b, " principal=%s", r.Principal)
+			fmt.Fprintf(&b, " principal=%s", safeTrace(r.Principal))
 		}
 		if r.Audience != "" {
-			fmt.Fprintf(&b, " aud=%s", r.Audience)
+			fmt.Fprintf(&b, " aud=%s", safeTrace(r.Audience))
 		}
 		if r.Tool != "" {
-			fmt.Fprintf(&b, " tool=%s", r.Tool)
+			fmt.Fprintf(&b, " tool=%s", safeTrace(r.Tool))
 		}
 		if r.Decision != "" {
-			fmt.Fprintf(&b, " decision=%s", r.Decision)
+			fmt.Fprintf(&b, " decision=%s", safeTrace(r.Decision))
 		}
 		if len(r.Hops) > 0 {
-			fmt.Fprintf(&b, " hops=%s", strings.Join(r.Hops, " > "))
+			hops := make([]string, len(r.Hops))
+			for i, h := range r.Hops {
+				hops[i] = safeTrace(h)
+			}
+			fmt.Fprintf(&b, " hops=%s", strings.Join(hops, " > "))
 		}
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+func safeTrace(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
 }

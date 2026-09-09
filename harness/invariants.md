@@ -47,7 +47,9 @@ current actor wrapping the incoming `act`. Reason code: `chain_integrity`.
 Every mint or deny writes a hash-linked JSONL record with a stable
 `reason_code` before the HTTP response is sent, including HTTP-layer
 denials that never enter `Exchange` (`rate_limited`, malformed form).
-The audit log path must not alias the replay log. Recovered audit
+If that write fails, STS does not return a minted token
+(`audit_unavailable`) and visor-gateway does not forward. The audit
+log path must not alias the replay log. Recovered audit
 records must be complete (hash-chain fields present). Opening that
 log verifies the hash chain (AI20). Allows `Sync()`
 the file.
@@ -180,7 +182,9 @@ from genesis; any non-audit line is a break. Only `-visor` may be
 generic JSONL. Operators look up a stolen token by minted `jti`
 (`trace -jti`) or by `txn` (`trace -txn`); jti→txn is taken from
 verified records, and a jti query returns that transaction. Once a
-subject JWT verifies, denials carry that `txn`/`jti`. Hashed Event
+subject JWT verifies (STS signature and issuer at the PEP), denials
+carry that `txn`/`jti`. `FormatTrace` strips control characters so
+unverified visor fields cannot inject extra hops. Hashed Event
 strings are valid UTF-8 and length-bounded (invalid or oversized
 request fields are replaced or truncated) so Append and reopen
 compute the same payload hash inside the 1MiB scanner cap. The hash

@@ -339,6 +339,32 @@ func TestHTTPUnauthenticatedOversizeDoesNotBreakAuditChain(t *testing.T) {
 	}
 }
 
+func TestMintFailsClosedWhenAuditUnhealthy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	log, err := audit.NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	w, err := scenario.NewWorld(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := w.UserToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := w.Exchange(scenario.Oncall, scenario.WLOncall, user, scenario.Invest, "mcp:github:pr")
+	if res.Token != "" {
+		t.Fatal("minted without audit")
+	}
+	if res.ReasonCode != sts.ReasonAuditFailed {
+		t.Fatalf("got %s want %s", res.ReasonCode, sts.ReasonAuditFailed)
+	}
+}
+
 func TestHTTPTokenEndpointProofJTIDoesNotPoisonSubjectReplay(t *testing.T) {
 	w := testWorld(t)
 	ts := httptest.NewServer(w.STS.Handler())

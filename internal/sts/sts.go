@@ -44,6 +44,7 @@ const (
 	ReasonPrincipalDenied        = denylist.ReasonPrincipalDenied
 	ReasonMissingCNF             = "missing_cnf"
 	ReasonInvalidDPoP            = "invalid_dpop_proof"
+	ReasonAuditFailed            = "audit_unavailable"
 )
 
 var ErrUnspecifiedBind = errors.New("sts: listen address must not be unspecified")
@@ -217,7 +218,6 @@ func (c *Config) Exchange(ctx context.Context, req ExchangeRequest) ExchangeResu
 			Workload:   out.workload,
 		}
 		if out.ReasonCode == ReasonOK {
-			c.Metrics.Minted.Add(1)
 			ev.EventType = "token_minted"
 			ev.Txn = out.Issued.Txn
 			ev.JTI = out.Issued.Jti
@@ -226,17 +226,27 @@ func (c *Config) Exchange(ctx context.Context, req ExchangeRequest) ExchangeResu
 			ev.Hops = append([]string{out.Issued.Sub}, out.Issued.ActorSubs()...)
 			ev.Scope = out.Issued.Scope
 		} else {
-			c.Metrics.Denied.Add(1)
-			if out.ReasonCode == ReasonReplayedToken {
-				c.Metrics.Replays.Add(1)
-			}
 			ev.EventType = "token_denied"
 			ev.Scope = req.Scope
 			ev.Txn = out.subjectTxn
 			ev.JTI = out.subjectJTI
 			ev.Principal = out.subjectSub
 		}
-		_ = c.Audit.Append(ev)
+		if err := c.Audit.Append(ev); err != nil {
+			return ExchangeResult{
+				ReasonCode: ReasonAuditFailed,
+				Error:      "server_error",
+				ErrorDesc:  "audit unavailable",
+			}
+		}
+		if out.ReasonCode == ReasonOK {
+			c.Metrics.Minted.Add(1)
+		} else {
+			c.Metrics.Denied.Add(1)
+			if out.ReasonCode == ReasonReplayedToken {
+				c.Metrics.Replays.Add(1)
+			}
+		}
 	}
 	return out.ExchangeResult
 }

@@ -67,15 +67,20 @@ func (v *Verifier) Verify(raw, audience string) (ActorChain, error) {
 	if err := c.ValidateIssuer(v.Issuer); err != nil {
 		return ActorChain{}, err
 	}
+	ch := chainFromClaims(raw, c)
 	if err := c.ValidateSubject(); err != nil {
-		return ActorChain{}, err
+		return ch, err
 	}
 	if err := c.ValidateAudience(audience); err != nil {
-		return ActorChain{}, err
+		return ch, err
 	}
 	if err := c.ValidateTime(v.now(), 0); err != nil {
-		return ActorChain{}, err
+		return ch, err
 	}
+	return ch, nil
+}
+
+func chainFromClaims(raw string, c token.Claims) ActorChain {
 	actors := c.ActorSubs()
 	hops := append([]string{c.Sub}, actors...)
 	actor := ""
@@ -96,7 +101,7 @@ func (v *Verifier) Verify(raw, audience string) (ActorChain, error) {
 		Expires:   time.Unix(c.Exp, 0).UTC(),
 		Claims:    c,
 		Raw:       raw,
-	}, nil
+	}
 }
 
 func RequireDepth(c ActorChain, max int) error {

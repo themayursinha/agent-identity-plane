@@ -716,6 +716,58 @@ func TestGatewayDPoPDenyRecordsJTI(t *testing.T) {
 	}
 }
 
+func TestGatewayExpiredTokenDenyRecordsJTI(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	log, err := audit.NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := scenario.NewWorld(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, tok, err := w.HappyPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, claims, _, err := token.ParseUnverified(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Verifier.Now = func() time.Time { return w.Now.Add(24 * time.Hour) }
+	cfg := &gateway.Config{
+		Audience:     scenario.Gateway,
+		Verifier:     w.Verifier,
+		Audit:        log,
+		IdentityOnly: true,
+		ProofReplay:  replay(w),
+	}
+	req := httptest.NewRequest(http.MethodPost, "/session", nil)
+	req.Host = "visor-gateway.test"
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rw := httptest.NewRecorder()
+	cfg.Handler().ServeHTTP(rw, req)
+	if rw.Code != http.StatusUnauthorized {
+		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := audit.Trace(audit.Query{JTI: claims.Jti}, []string{path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range recs {
+		if r.EventType == "identity_denied" && r.JTI == claims.Jti && r.Txn == claims.Txn {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing expired deny in %+v", recs)
+	}
+}
+
 func TestGatewayRejectsWrongDPoPKey(t *testing.T) {
 	w := testWorld(t)
 	_, tok, err := w.HappyPath()

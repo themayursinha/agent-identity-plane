@@ -147,7 +147,12 @@ func (c *Config) handlePEP(w http.ResponseWriter, r *http.Request) {
 	}
 	chain, err := c.Verifier.Verify(raw, c.Audience)
 	if err != nil {
-		c.writeDeny(w, http.StatusUnauthorized, ReasonInvalidToken, err.Error(), nil)
+		var m *visoradapter.Mapping
+		if chain.Txn != "" || chain.JTI != "" {
+			mapped := visoradapter.FromChain(chain, visoradapter.Options{ShortName: c.ShortName})
+			m = &mapped
+		}
+		c.writeDeny(w, http.StatusUnauthorized, ReasonInvalidToken, err.Error(), m)
 		return
 	}
 	m := visoradapter.FromChain(chain, visoradapter.Options{ShortName: c.ShortName})
