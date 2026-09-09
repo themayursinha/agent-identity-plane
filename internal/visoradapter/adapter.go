@@ -16,6 +16,7 @@ type Mapping struct {
 	ActingAgent string            `json:"acting_agent"`
 	Hops        []string          `json:"hops"`
 	Scope       string            `json:"scope"`
+	JTI         string            `json:"jti,omitempty"`
 	Lineage     map[string]string `json:"lineage"`
 }
 
@@ -45,6 +46,7 @@ func FromChain(c verify.ActorChain, opt Options) Mapping {
 		ActingAgent: c.Actor,
 		Hops:        append([]string{}, c.Hops...),
 		Scope:       c.Scope,
+		JTI:         c.JTI,
 		Lineage:     lin,
 	}
 }

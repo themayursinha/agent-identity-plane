@@ -58,10 +58,12 @@ and re-read on each verify. visor-gateway requires a DPoP proof bound
 to minted `cnf.jkt` and a durable `-dpop-replay` log. JWKS URLs must be
 `https` except loopback `http`. visor itself is unchanged.
 
-`trace` reconstructs hops from required `-audit-log` JSONL. Opening
+`trace` reconstructs hops from required `-audit-log` JSONL. `-audit`
+is always chain-verified; only `-visor` may be generic JSONL. Opening
 and tracing an STS/gateway audit file verifies the hash chain (AI20).
-Operators look up a minted `jti` or `txn`. Key-compromise procedures
-are in `docs/runbooks.md`. This is not a Production claim.
+Operators look up a minted `jti` or `txn` from verified records.
+The hash chain is not a MAC. Key-compromise procedures are in
+`docs/runbooks.md`. This is not a Production claim.
 
 A deny is an authorization result (HTTP 400 with `error` / `error_description`
 and a reason code), not a process failure. Process failure is reserved for

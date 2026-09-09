@@ -174,12 +174,18 @@ Production claim.
 ## AI20 — Incident reconstruction verifies the audit hash chain
 
 `trace` reconstructs hops from STS/gateway audit JSONL and optional
-visor JSONL. Opening an STS or visor-gateway audit log, and tracing
-it, verifies `prev_hash`, `chain_index`, and payload `hash` from
-genesis; a break fails closed. Operators look up a stolen token by
-minted `jti` (`trace -jti`) or by `txn` (`trace -txn`); a jti query
-returns the full transaction that minted it. Planned signing-key
-rotation still waits `KeyRetirementWait`; compromise recovery removes
-the burned kid as soon as the replacement is active. This is the operator
-runbook surface for key compromise, not a Production claim.
+visor JSONL. `-audit` is always an Event stream: opening that log, and
+tracing it, verifies `prev_hash`, `chain_index`, and payload `hash`
+from genesis; any non-audit line is a break. Only `-visor` may be
+generic JSONL. Operators look up a stolen token by minted `jti`
+(`trace -jti`) or by `txn` (`trace -txn`); jti→txn is taken from
+verified records, and a jti query returns that transaction. Once a
+subject JWT verifies, denials carry that `txn`/`jti`. The hash chain
+is not a MAC: tail truncation, an empty file, and a fully recomputed
+log are not detected. Planned signing-key rotation still waits
+`KeyRetirementWait`; compromise recovery removes the burned kid as
+soon as the replacement is active. A visor-gateway `-jwks` file copy
+must be regenerated; `-jwks-url` re-fetches. Preload still mints on
+the burned `active_kid` until activate. This is the operator runbook
+surface for key compromise, not a Production claim.
 

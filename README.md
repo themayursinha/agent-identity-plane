@@ -137,7 +137,7 @@ CLI: `serve`, `visor-gateway`, `registry lint`, `token inspect|verify`, `trace`,
 - **v0.4 live workload JWKS:** `serve` may fetch JWT-SVID keys from `-spiffe-jwks-url` or `-spiffe-oidc-issuer` (same URL/TLS policy as visor-gateway). Still not Workload API.
 - **v0.5 agent denylist:** owned JSON of agent, workload, and principal IDs. Exact match. Enforced at mint and at visor-gateway (in-flight hops).
 - **v0.6 DPoP at visor-gateway:** minted tokens carry `cnf.jkt` of a workload-possessed key. visor-gateway requires a DPoP proof (`htm`/`htu`/`ath`/`jti`) whose JWK thumbprint matches, with durable proof-jti replay. Not Production (no DPoP nonce; STS exchange is still actor_token).
-- **v0.7 incident reconstruction:** `trace` verifies the STS audit hash chain and looks up hops by `txn` or minted `jti`. Key-compromise procedures are in [runbooks](docs/runbooks.md). Not Production (no live visor-only `--client-id` path; no DPoP nonce).
+- **v0.7 incident reconstruction:** `trace -audit` verifies the STS/gateway hash chain (not a MAC) and looks up hops by `txn` or minted `jti` from verified records. Key-compromise procedures are in [runbooks](docs/runbooks.md). Not Production (no live visor-only `--client-id` path; no DPoP nonce).
 - **Not a host sandbox and not an MCP policy proxy**
 
 ## Documentation

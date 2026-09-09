@@ -104,4 +104,41 @@ func TestCLITraceJTI(t *testing.T) {
 	if !strings.Contains(string(out), "jti=jti-stolen") || !strings.Contains(string(out), "token_minted") {
 		t.Fatalf("%s", out)
 	}
+	if !strings.Contains(string(out), "verified=") {
+		t.Fatalf("missing trust label: %s", out)
+	}
+}
+
+func TestCLITraceRejectsGenericAuditPrefix(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "aip")
+	cmd := exec.Command("go", "build", "-o", bin, ".")
+	cmd.Dir = "."
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	path := filepath.Join(t.TempDir(), "sts.jsonl")
+	l, err := audit.NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(audit.Event{EventType: "token_minted", ReasonCode: "ok", Txn: "txn-1", JTI: "jti-stolen"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append([]byte(`{"event_type":"note"}`+"\n"), b...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tr := exec.Command(bin, "trace", "-jti", "jti-stolen", "-audit", path)
+	out, err = tr.CombinedOutput()
+	if err == nil {
+		t.Fatalf("generic prefix on -audit must fail: %s", out)
+	}
 }

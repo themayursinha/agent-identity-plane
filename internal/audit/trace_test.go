@@ -36,6 +36,12 @@ func TestTraceTxn(t *testing.T) {
 	if !strings.Contains(out, "token_minted") || !strings.Contains(out, "create_pr") || !strings.Contains(out, "jti=jti-a") {
 		t.Fatal(out)
 	}
+	if !strings.Contains(out, "verified=") || !strings.Contains(out, "unverified=") {
+		t.Fatal(out)
+	}
+	if recs[0].Verified != true || recs[1].Verified != false {
+		t.Fatalf("trust %+v %+v", recs[0], recs[1])
+	}
 }
 
 func TestTraceJTIExpandsTxn(t *testing.T) {
@@ -53,7 +59,7 @@ func TestTraceJTIExpandsTxn(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = l.Close()
-	recs, err := Trace(Query{JTI: "jti-a"}, path)
+	recs, err := Trace(Query{JTI: "jti-a"}, []string{path}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +69,7 @@ func TestTraceJTIExpandsTxn(t *testing.T) {
 	if recs[0].JTI != "jti-a" || recs[1].JTI != "jti-b" {
 		t.Fatalf("%+v", recs)
 	}
-	none, err := Trace(Query{Txn: "txn-other", JTI: "jti-a"}, path)
+	none, err := Trace(Query{Txn: "txn-other", JTI: "jti-a"}, []string{path}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,5 +100,59 @@ func TestTraceRejectsBrokenHash(t *testing.T) {
 	_, err = TraceTxn("txn-1", path)
 	if err == nil || !errors.Is(err, ErrChainBroken) {
 		t.Fatalf("got %v want ErrChainBroken", err)
+	}
+}
+
+func TestTraceAuditPathRejectsGenericPrefix(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sts.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{EventType: "token_minted", ReasonCode: "ok", Txn: "txn-1", JTI: "jti-a", AgentID: "oncall"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = l.Close()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := `{"event_type":"note"}` + "\n" + string(b)
+	if err := os.WriteFile(path, []byte(tampered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = TraceTxn("txn-1", path)
+	if err == nil {
+		t.Fatal("generic prefix on -audit must fail closed")
+	}
+}
+
+func TestTraceVisorJTIDoesNotPivotTxn(t *testing.T) {
+	dir := t.TempDir()
+	stsPath := filepath.Join(dir, "sts.jsonl")
+	visorPath := filepath.Join(dir, "visor.jsonl")
+	l, err := NewLogger(stsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{EventType: "token_minted", ReasonCode: "ok", Txn: "txn-1", JTI: "jti-a", AgentID: "oncall"}); err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_002, 0).UTC() })
+	if err := l.Append(Event{EventType: "token_minted", ReasonCode: "ok", Txn: "txn-2", JTI: "jti-b", AgentID: "invest"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = l.Close()
+	if err := os.WriteFile(visorPath, []byte(`{"timestamp":"2023-11-14T22:13:22Z","event_type":"tool_call_allowed","session_id":"txn-2","jti":"jti-a","tool":"create_pr"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := Trace(Query{JTI: "jti-a"}, []string{stsPath}, []string{visorPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 1 || recs[0].Txn != "txn-1" {
+		t.Fatalf("%+v", recs)
 	}
 }

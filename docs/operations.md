@@ -42,7 +42,8 @@ Keyring (rotate without dropping in-flight tokens):
 
 1. Preload: add the new key, keep `active_kid` on the current kid, `kill -HUP`.
    `/jwks.json` now publishes both. Wait until verifiers refresh JWKS
-   (visor-gateway re-reads `-jwks` / `-jwks-url` on each verify).
+   (visor-gateway re-reads `-jwks-url` on each verify; a `-jwks` file
+   is re-read from disk, so replace that copy when the ring changes).
 2. Activate: set `active_kid` to the already-published new kid, `kill -HUP`.
    Activating a kid that was not in the previous JWKS is rejected.
    Reloading a published kid with different public-key bytes is rejected.
@@ -76,9 +77,10 @@ agent denylist; see below.
 ## Trace
 
 `agent-identity-plane trace -txn ID -audit sts-audit.jsonl` reconstructs
-hops. `trace -jti JTI` finds the transaction that minted that token.
-STS/gateway audit JSONL is hash-chain verified on open and on trace.
-See [runbooks.md](runbooks.md).
+hops. `trace -jti JTI` maps jti→txn from verified `-audit` records
+only. `-audit` is always chain-verified; only `-visor` may be generic
+JSONL. The hash chain is not a MAC: tail truncation, an empty file,
+and a fully recomputed log are not detected. See [runbooks.md](runbooks.md).
 
 ## Endpoints
 

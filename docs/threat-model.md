@@ -47,7 +47,10 @@ This document is an engineering threat model, not a compliance claim.
 - visor-gateway `-backend` is an HTTP reverse-proxy. mcp-visor `serve` is stdio; use `-identity-only` and start visor with the derived `--client-id` / `--session-id`.
 - `-client-short-name` is opt-in. Last URI segments are not unique across prefixes; the default client-id is the full `act.sub`.
 - Cross-domain federation (OAuth Identity Chaining) is not implemented.
+- The STS/gateway audit hash chain is not a MAC. In-place edits fail
+  closed. Tail truncation, emptying the file, or rewriting it with a
+  freshly computed chain is not detected.
 
 ## Residual risk
 
-A process that holds a valid workload key and a valid inbound subject token can mint the next hop until TTL/depth/scope **or the denylist** stop it. Detecting a *subverted but correctly attested* agent still needs that operator-supplied denylist (or visor policy). This repo does not invent a host sandbox. Theft of a minted JWT without the workload private key is stopped at visor-gateway by DPoP. A DPoP proof `jti` already in `-dpop-replay` is rejected. Without a nonce, an intercepted proof can still win a race before the first consume, or be replayed if the durable log is lost before `iat + ClockSkew`. Operators reconstruct hops with `trace` after verifying the audit hash chain; key-compromise steps are in [runbooks.md](runbooks.md).
+A process that holds a valid workload key and a valid inbound subject token can mint the next hop until TTL/depth/scope **or the denylist** stop it. Detecting a *subverted but correctly attested* agent still needs that operator-supplied denylist (or visor policy). This repo does not invent a host sandbox. Theft of a minted JWT without the workload private key is stopped at visor-gateway by DPoP. A DPoP proof `jti` already in `-dpop-replay` is rejected. Without a nonce, an intercepted proof can still win a race before the first consume, or be replayed if the durable log is lost before `iat + ClockSkew`. Operators reconstruct hops with `trace` after verifying the audit hash chain; unverified visor JSONL cannot choose the `jti`→`txn` mapping. A visor-gateway `-jwks` file copy keeps trusting a burned kid until that file is regenerated. Key-compromise steps are in [runbooks.md](runbooks.md).

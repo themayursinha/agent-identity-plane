@@ -12,6 +12,7 @@ import (
 // Record is a reconstructed hop from STS and optional visor JSONL.
 type Record struct {
 	Source     string   `json:"source"`
+	Verified   bool     `json:"verified,omitempty"`
 	Timestamp  string   `json:"timestamp"`
 	EventType  string   `json:"event_type"`
 	ReasonCode string   `json:"reason_code,omitempty"`
@@ -34,42 +35,53 @@ type Query struct {
 	JTI string
 }
 
-// TraceTxn scans JSONL files for records whose txn or session_id matches.
-func TraceTxn(txn string, paths ...string) ([]Record, error) {
-	return Trace(Query{Txn: txn}, paths...)
+// TraceTxn reconstructs hops for txn from a chain-verified audit file
+// and optional unverified visor JSONL.
+func TraceTxn(txn string, auditPath string, visorPaths ...string) ([]Record, error) {
+	return Trace(Query{Txn: txn}, []string{auditPath}, visorPaths)
 }
 
-// Trace reconstructs hops matching txn and/or jti. STS/gateway audit
-// files are hash-chain verified (fail closed). A jti-only query returns
-// every record for the transaction that minted that jti.
-func Trace(q Query, paths ...string) ([]Record, error) {
+// Trace reconstructs hops matching txn and/or jti. Every audit path is
+// hash-chain verified (fail closed). visor paths are generic JSONL and
+// must not choose the jti→txn mapping. A jti-only query returns every
+// record for the transaction that minted that jti on a verified audit
+// record, plus visor lines whose session_id equals that txn.
+func Trace(q Query, auditPaths []string, visorPaths []string) ([]Record, error) {
 	q.Txn = strings.TrimSpace(q.Txn)
 	q.JTI = strings.TrimSpace(q.JTI)
 	if q.Txn == "" && q.JTI == "" {
 		return nil, fmt.Errorf("audit: txn or jti required")
 	}
-	var all []Record
-	for _, p := range paths {
+	var verified []Record
+	for _, p := range auditPaths {
 		if strings.TrimSpace(p) == "" {
 			continue
 		}
-		recs, err := loadRecords(p)
+		recs, err := loadAuditFile(p)
 		if err != nil {
 			return nil, err
 		}
-		all = append(all, recs...)
+		verified = append(verified, recs...)
+	}
+	var unverified []Record
+	for _, p := range visorPaths {
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		recs, err := loadGenericFile(p)
+		if err != nil {
+			return nil, err
+		}
+		unverified = append(unverified, recs...)
 	}
 	txns := map[string]struct{}{}
 	if q.JTI != "" {
-		for _, r := range all {
+		for _, r := range verified {
 			if r.JTI != q.JTI {
 				continue
 			}
 			if r.Txn != "" {
 				txns[r.Txn] = struct{}{}
-			}
-			if r.SessionID != "" {
-				txns[r.SessionID] = struct{}{}
 			}
 		}
 		if len(txns) == 0 {
@@ -85,7 +97,12 @@ func Trace(q Query, paths ...string) ([]Record, error) {
 		txns[q.Txn] = struct{}{}
 	}
 	var out []Record
-	for _, r := range all {
+	for _, r := range verified {
+		if _, ok := txns[r.Txn]; ok {
+			out = append(out, r)
+		}
+	}
+	for _, r := range unverified {
 		if _, ok := txns[r.Txn]; ok {
 			out = append(out, r)
 			continue
@@ -100,7 +117,7 @@ func Trace(q Query, paths ...string) ([]Record, error) {
 	return out, nil
 }
 
-func loadRecords(path string) ([]Record, error) {
+func readLines(path string) ([][]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -121,24 +138,23 @@ func loadRecords(path string) ([]Record, error) {
 	if err := sc.Err(); err != nil {
 		return nil, err
 	}
-	if len(lines) == 0 {
-		return nil, nil
-	}
-	if looksLikeAudit(lines[0]) {
-		return loadAuditRecords(path, lines)
-	}
-	return loadGenericRecords(path, lines)
+	return lines, nil
 }
 
-func looksLikeAudit(line []byte) bool {
-	var probe map[string]json.RawMessage
-	if err := json.Unmarshal(line, &probe); err != nil {
-		return false
+func loadAuditFile(path string) ([]Record, error) {
+	lines, err := readLines(path)
+	if err != nil {
+		return nil, err
 	}
-	_, hash := probe["hash"]
-	_, prev := probe["prev_hash"]
-	_, idx := probe["chain_index"]
-	return hash && prev && idx
+	return loadAuditRecords(path, lines)
+}
+
+func loadGenericFile(path string) ([]Record, error) {
+	lines, err := readLines(path)
+	if err != nil {
+		return nil, err
+	}
+	return loadGenericRecords(path, lines)
 }
 
 func loadAuditRecords(path string, lines [][]byte) ([]Record, error) {
@@ -160,6 +176,7 @@ func loadAuditRecords(path string, lines [][]byte) ([]Record, error) {
 func recordFromEvent(path string, e Event) Record {
 	return Record{
 		Source:     path,
+		Verified:   true,
 		Timestamp:  e.Timestamp,
 		EventType:  e.EventType,
 		ReasonCode: e.ReasonCode,
@@ -180,7 +197,7 @@ func loadGenericRecords(path string, lines [][]byte) ([]Record, error) {
 		if err := json.Unmarshal(line, &generic); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
-		r := Record{Source: path}
+		r := Record{Source: path, Verified: false}
 		r.Txn, _ = generic["txn"].(string)
 		r.SessionID, _ = generic["session_id"].(string)
 		r.Timestamp, _ = generic["timestamp"].(string)
@@ -209,7 +226,11 @@ func loadGenericRecords(path string, lines [][]byte) ([]Record, error) {
 func FormatTrace(recs []Record) string {
 	var b strings.Builder
 	for i, r := range recs {
-		fmt.Fprintf(&b, "%d. [%s] %s", i+1, r.EventType, r.Timestamp)
+		trust := "unverified"
+		if r.Verified {
+			trust = "verified"
+		}
+		fmt.Fprintf(&b, "%d. [%s] %s %s=%s", i+1, r.EventType, r.Timestamp, trust, r.Source)
 		if r.ReasonCode != "" {
 			fmt.Fprintf(&b, " reason=%s", r.ReasonCode)
 		}
