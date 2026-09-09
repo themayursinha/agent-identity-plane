@@ -44,10 +44,11 @@ reloads registry and signing material as one identity snapshot; an
 invalid file keeps the previous snapshot.
 
 `visor-gateway` is the identity PEP in front of mcp-visor. It verifies
-the Bearer actor chain, overwrites `X-Visor-Client-Id` /
-`X-Visor-Session-Id`, and reverse-proxies to `-backend` (or returns
-the mapping with `-identity-only`). JWKS URLs must be `https` except
-loopback `http`. visor itself is unchanged.
+the Bearer actor chain (a complete current actor, principal, and
+session), overwrites `X-Visor-Client-Id` / `X-Visor-Session-Id` after
+hop-by-hop stripping, and reverse-proxies to `-backend` (or returns
+the mapping with `-identity-only`). Audit writes fail closed. JWKS
+URLs must be `https` except loopback `http`. visor itself is unchanged.
 
 A deny is an authorization result (HTTP 400 with `error` / `error_description`
 and a reason code), not a process failure. Process failure is reserved for

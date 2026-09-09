@@ -1,6 +1,7 @@
 package visoradapter
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
@@ -45,6 +46,21 @@ func FromChain(c verify.ActorChain, opt Options) Mapping {
 		Scope:       c.Scope,
 		Lineage:     lin,
 	}
+}
+
+// Complete reports whether the mapping has the visor identity fields a PEP
+// may forward: acting agent, client id, session/txn, and principal.
+func (m Mapping) Complete() error {
+	if strings.TrimSpace(m.ActingAgent) == "" || strings.TrimSpace(m.ClientID) == "" {
+		return fmt.Errorf("visoradapter: missing acting agent")
+	}
+	if strings.TrimSpace(m.SessionID) == "" {
+		return fmt.Errorf("visoradapter: missing session id")
+	}
+	if strings.TrimSpace(m.Principal) == "" {
+		return fmt.Errorf("visoradapter: missing principal")
+	}
+	return nil
 }
 
 func shortName(id string) string {

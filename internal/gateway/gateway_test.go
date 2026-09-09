@@ -15,6 +15,7 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
 	"github.com/themayursinha/agent-identity-plane/internal/gateway"
 	"github.com/themayursinha/agent-identity-plane/internal/scenario"
+	"github.com/themayursinha/agent-identity-plane/internal/token"
 )
 
 func testWorld(t *testing.T) *scenario.World {
@@ -107,6 +108,9 @@ func TestGatewayOverwritesSpoofedVisorHeaders(t *testing.T) {
 		if r.Header.Get("X-Visor-Session-Id") == "" {
 			t.Error("missing session")
 		}
+		if r.Header.Get("X-Actor-Chain") == "" {
+			t.Error("missing actor chain")
+		}
 		rw.WriteHeader(http.StatusOK)
 		_, _ = io.WriteString(rw, "ok")
 	}))
@@ -125,6 +129,7 @@ func TestGatewayOverwritesSpoofedVisorHeaders(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("X-Visor-Client-Id", "spoofed")
+	req.Header.Set("Connection", "X-Visor-Client-Id, X-Visor-Session-Id, X-Actor-Chain")
 	rw := httptest.NewRecorder()
 	cfg.Handler().ServeHTTP(rw, req)
 	if rw.Code != 200 {
@@ -238,6 +243,7 @@ func TestNewServerRejectsUnspecifiedBind(t *testing.T) {
 		Bind:         "0.0.0.0:8090",
 		Audience:     scenario.Gateway,
 		Verifier:     w.Verifier,
+		Audit:        w.STS.Audit,
 		IdentityOnly: true,
 	}
 	if _, err := gateway.NewServer(cfg); err == nil {
@@ -251,6 +257,7 @@ func TestNewServerRequiresBackendOrIdentityOnly(t *testing.T) {
 		Bind:     "127.0.0.1:8090",
 		Audience: scenario.Gateway,
 		Verifier: w.Verifier,
+		Audit:    w.STS.Audit,
 	}
 	if _, err := gateway.NewServer(cfg); err == nil {
 		t.Fatal("expected backend or identity-only")
@@ -282,10 +289,128 @@ func TestGatewayTLSPairRequired(t *testing.T) {
 		Bind:         "127.0.0.1:8090",
 		Audience:     scenario.Gateway,
 		Verifier:     w.Verifier,
+		Audit:        w.STS.Audit,
 		IdentityOnly: true,
 		TLSCertFile:  "cert.pem",
 	}
 	if _, err := gateway.NewServer(cfg); err == nil {
 		t.Fatal("expected cert/key pair error")
+	}
+}
+
+func TestNewServerRequiresAudit(t *testing.T) {
+	w := testWorld(t)
+	cfg := &gateway.Config{
+		Bind:         "127.0.0.1:8090",
+		Audience:     scenario.Gateway,
+		Verifier:     w.Verifier,
+		IdentityOnly: true,
+	}
+	if _, err := gateway.NewServer(cfg); err == nil {
+		t.Fatal("expected audit required")
+	}
+}
+
+func TestGatewayRejectsTokenWithoutActor(t *testing.T) {
+	w := testWorld(t)
+	tok, err := w.STS.Signer.SignClaims(token.Claims{
+		Iss: scenario.Issuer,
+		Sub: scenario.User,
+		Aud: token.Audience{scenario.Gateway},
+		Exp: w.Now.Add(time.Minute).Unix(),
+		Iat: w.Now.Unix(),
+		Jti: "no-act",
+		Txn: "txn-no-act",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := 0
+	backend := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		called++
+		rw.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(backend.Close)
+	u, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "g-audit.jsonl")
+	log, err := audit.NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = log.Close() })
+	cfg := &gateway.Config{
+		Audience:  scenario.Gateway,
+		Verifier:  w.Verifier,
+		Audit:     log,
+		Backend:   u,
+		ShortName: true,
+	}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rw := httptest.NewRecorder()
+	cfg.Handler().ServeHTTP(rw, req)
+	if rw.Code != http.StatusUnauthorized {
+		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	}
+	if called != 0 {
+		t.Fatalf("backend called %d times", called)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"reason_code":"incomplete_chain"`) {
+		t.Fatalf("audit: %s", raw)
+	}
+}
+
+func TestGatewayAuditFailureFailsClosed(t *testing.T) {
+	w := testWorld(t)
+	_, tok, err := w.HappyPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := 0
+	backend := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		called++
+		rw.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(backend.Close)
+	u, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log, err := audit.NewLogger(filepath.Join(t.TempDir(), "g-audit.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &gateway.Config{
+		Audience:  scenario.Gateway,
+		Verifier:  w.Verifier,
+		Audit:     log,
+		Backend:   u,
+		ShortName: true,
+	}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rw := httptest.NewRecorder()
+	cfg.Handler().ServeHTTP(rw, req)
+	if rw.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	}
+	if called != 0 {
+		t.Fatalf("backend called %d times", called)
+	}
+
+	deny := httptest.NewRecorder()
+	cfg.Handler().ServeHTTP(deny, httptest.NewRequest(http.MethodPost, "/mcp", nil))
+	if deny.Code != http.StatusServiceUnavailable {
+		t.Fatalf("deny status %d", deny.Code)
 	}
 }

@@ -24,8 +24,16 @@ const (
 	ReasonOK           = "ok"
 	ReasonMissingToken = "missing_bearer"
 	ReasonInvalidToken = "invalid_token"
+	ReasonIncomplete   = "incomplete_chain"
 	ReasonRateLimited  = "rate_limited"
 	ReasonNotReady     = "jwks_unavailable"
+	ReasonAuditFailed  = "audit_unavailable"
+)
+
+const (
+	headerVisorClient  = "X-Visor-Client-Id"
+	headerVisorSession = "X-Visor-Session-Id"
+	headerActorChain   = "X-Actor-Chain"
 )
 
 // Metrics are process-local visor-gateway counters.
@@ -118,52 +126,74 @@ func (c *Config) handlePEP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := visoradapter.FromChain(chain, visoradapter.Options{ShortName: c.ShortName})
-	c.Metrics.Allowed.Add(1)
-	if c.Audit != nil {
-		_ = c.Audit.Append(audit.Event{
-			EventType:  "identity_allowed",
-			ReasonCode: ReasonOK,
-			Txn:        m.SessionID,
-			AgentID:    m.ActingAgent,
-			Principal:  m.Principal,
-			Audience:   c.Audience,
-			Scope:      m.Scope,
-			JTI:        chain.JTI,
-		})
+	if err := m.Complete(); err != nil {
+		c.writeDeny(w, http.StatusUnauthorized, ReasonIncomplete, err.Error())
+		return
 	}
-	w.Header().Set("X-Visor-Client-Id", m.ClientID)
-	w.Header().Set("X-Visor-Session-Id", m.SessionID)
-	w.Header().Set("X-Actor-Chain", strings.Join(m.Hops, " > "))
+	if err := c.record(audit.Event{
+		EventType:  "identity_allowed",
+		ReasonCode: ReasonOK,
+		Txn:        m.SessionID,
+		AgentID:    m.ActingAgent,
+		Principal:  m.Principal,
+		Audience:   c.Audience,
+		Scope:      m.Scope,
+		JTI:        chain.JTI,
+		Hops:       m.Hops,
+	}); err != nil {
+		c.failClosed(w)
+		return
+	}
+	c.Metrics.Allowed.Add(1)
+	applyIdentityHeaders(w.Header(), m)
 	if c.IdentityOnly || c.Backend == nil {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(m)
 		return
 	}
-	proxy := httputil.NewSingleHostReverseProxy(c.Backend)
-	orig := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		orig(req)
-		req.Header.Del("X-Visor-Client-Id")
-		req.Header.Del("X-Visor-Session-Id")
-		req.Header.Del("X-Actor-Chain")
-		req.Header.Set("X-Visor-Client-Id", m.ClientID)
-		req.Header.Set("X-Visor-Session-Id", m.SessionID)
-		req.Header.Set("X-Actor-Chain", strings.Join(m.Hops, " > "))
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(c.Backend)
+			pr.Out.Host = c.Backend.Host
+			applyIdentityHeaders(pr.Out.Header, m)
+		},
 	}
 	proxy.ServeHTTP(w, r)
 }
 
+func applyIdentityHeaders(h http.Header, m visoradapter.Mapping) {
+	h.Del(headerVisorClient)
+	h.Del(headerVisorSession)
+	h.Del(headerActorChain)
+	h.Set(headerVisorClient, m.ClientID)
+	h.Set(headerVisorSession, m.SessionID)
+	h.Set(headerActorChain, strings.Join(m.Hops, " > "))
+}
+
+func (c *Config) record(ev audit.Event) error {
+	if c.Audit == nil {
+		return fmt.Errorf("gateway: audit required")
+	}
+	return c.Audit.Append(ev)
+}
+
+func (c *Config) failClosed(w http.ResponseWriter) {
+	c.Metrics.Denied.Add(1)
+	http.Error(w, "audit unavailable\n", http.StatusServiceUnavailable)
+}
+
 func (c *Config) writeDeny(w http.ResponseWriter, status int, reason, desc string) {
+	if err := c.record(audit.Event{
+		EventType:  "identity_denied",
+		ReasonCode: reason,
+		Audience:   c.Audience,
+	}); err != nil {
+		c.failClosed(w)
+		return
+	}
 	c.Metrics.Denied.Add(1)
 	if reason == ReasonRateLimited {
 		c.Metrics.RateLimited.Add(1)
-	}
-	if c.Audit != nil {
-		_ = c.Audit.Append(audit.Event{
-			EventType:  "identity_denied",
-			ReasonCode: reason,
-			Audience:   c.Audience,
-		})
 	}
 	http.Error(w, desc+"\n", status)
 }
@@ -188,6 +218,9 @@ func NewServer(cfg *Config) (*Server, error) {
 	}
 	if cfg.Verifier == nil || cfg.Audience == "" {
 		return nil, fmt.Errorf("gateway: verifier and audience required")
+	}
+	if cfg.Audit == nil {
+		return nil, fmt.Errorf("gateway: audit required")
 	}
 	if !cfg.IdentityOnly && cfg.Backend == nil {
 		return nil, fmt.Errorf("gateway: -backend or -identity-only is required")

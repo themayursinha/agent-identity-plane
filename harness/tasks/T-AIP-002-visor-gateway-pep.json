@@ -3,8 +3,8 @@
   "invariant_ids": ["AI8", "AI11", "AI16"],
   "security_sensitive": true,
   "security_problem": "mcp-visor --client-id is an operator-supplied string. Without an identity PEP, a caller can spoof visor identity policy. JWKS fetched over cleartext non-loopback HTTP can be substituted.",
-  "required_behavior": "visor-gateway verifies the STS Bearer token against the configured audience before any backend forward. X-Visor-Client-Id and X-Visor-Session-Id are derived from the verified chain and overwrite caller-supplied values. JWKS URLs must be https except loopback http. Every allow or deny is audited before the HTTP response. Unspecified binds are rejected.",
-  "failure_behavior": "Fail closed: missing bearer, invalid token, JWKS fetch failure, non-https JWKS URL, and unspecified bind produce a deny or process error. No backend request is made without a verified chain.",
+  "required_behavior": "visor-gateway verifies the STS Bearer token against the configured audience before any backend forward. The verified chain must include a current actor, principal, and session. X-Visor-Client-Id and X-Visor-Session-Id are derived from the verified chain and overwrite caller-supplied values after hop-by-hop header removal. JWKS URLs must be https except loopback http. Every allow or deny is audited before the HTTP response; an unwritable audit sink fails closed. Unspecified binds are rejected.",
+  "failure_behavior": "Fail closed: missing bearer, invalid token, incomplete actor chain, JWKS fetch failure, non-https JWKS URL, audit write failure, and unspecified bind produce a deny or process error. No backend request is made without a verified chain and a durable audit record.",
   "max_attempts": 3,
   "required_commands": [
     {

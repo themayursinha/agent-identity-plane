@@ -30,7 +30,7 @@ This document is an engineering threat model, not a compliance claim.
 | Stolen STS subject reused at exchange | `jti` consumed on first successful hop (AI12) | `replayed_token` |
 | `alg=none` / alg confusion | Header alg must match JWK type | verify fail |
 | Missing attribution | Audit record before HTTP response (AI8) | n/a |
-| Spoofed visor `--client-id` at the gateway | visor-gateway verifies Bearer and overwrites `X-Visor-*` (AI16) | `missing_bearer` / `invalid_token` |
+| Spoofed visor `--client-id` at the gateway | visor-gateway verifies Bearer and overwrites `X-Visor-*` after hop-by-hop strip (AI16) | `missing_bearer` / `invalid_token` / `incomplete_chain` |
 | Unspecified bind | `ValidateBind` (AI11) | process error |
 
 ## Out of scope / honest limits
