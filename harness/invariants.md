@@ -230,7 +230,9 @@ visor-gateway issues unguessable, single-use, process-local DPoP nonces
 Missing or unknown nonce is 401 with `WWW-Authenticate` `error="use_dpop_nonce"`
 and a fresh `DPoP-Nonce`. The nonce is checked before proof-jti consume so a
 first request without a nonce does not burn `jti`. visor-session and the A2A
-tripper retry once on that challenge. Restart forgets issued nonces, so a
+tripper retry once on that challenge. The tripper retries only when the request
+body can be recreated (`GetBody`); a consumed stream is returned as the
+challenge, not resent empty. Restart forgets issued nonces, so a
 captured proof cannot be replayed from a lost `-dpop-replay` log. STS
 `POST /oauth/token` does not require a nonce. This is not a Production claim.
 

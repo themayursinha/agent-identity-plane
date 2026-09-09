@@ -174,6 +174,7 @@ It issues unguessable, single-use, process-local nonces (`DPoP-Nonce`)
 on DPoP 401s and on allow. Missing or unknown nonce is 401 with
 `WWW-Authenticate` `error="use_dpop_nonce"`. The nonce is checked before
 proof-jti consume. visor-session and the A2A tripper retry once.
+The tripper retries only when the body is replayable (`GetBody`).
 Restart forgets issued nonces, so a captured proof cannot be replayed
 from a lost `-dpop-replay` log. STS `POST /oauth/token` does not require
 a nonce. This is not a Production identity plane.

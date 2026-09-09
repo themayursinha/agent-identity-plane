@@ -207,9 +207,10 @@ func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 	}
-	if clone.Body != nil && req.Body != nil && req.GetBody != nil {
-		b, _ := req.GetBody()
-		clone.Body = b
+	if body, err := replayBody(req); err != nil {
+		return nil, err
+	} else if body != nil {
+		clone.Body = body
 	} else if req.Body != nil && clone.Body == nil {
 		clone.Body = io.NopCloser(bytes.NewReader(nil))
 	}
@@ -221,6 +222,15 @@ func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if nonce == "" {
 		return resp, nil
 	}
+	body, ok, err := replayBodyOK(req)
+	if err != nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		return nil, err
+	}
+	if !ok {
+		return resp, nil
+	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	_ = resp.Body.Close()
 	retry := req.Clone(req.Context())
@@ -228,14 +238,35 @@ func (t *Tripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err := t.setProof(retry, res.Token, nonce); err != nil {
 		return nil, err
 	}
-	if req.GetBody != nil {
-		b, err := req.GetBody()
-		if err != nil {
-			return nil, err
-		}
-		retry.Body = b
-	}
+	retry.Body = body
 	return base.RoundTrip(retry)
+}
+
+// replayBodyOK returns a fresh body for a DPoP nonce retry.
+// false means the original body was consumed and cannot be recreated.
+func replayBodyOK(req *http.Request) (io.ReadCloser, bool, error) {
+	if req == nil || req.Body == nil || req.Body == http.NoBody {
+		return nil, true, nil
+	}
+	if req.GetBody == nil {
+		return nil, false, nil
+	}
+	b, err := req.GetBody()
+	if err != nil {
+		return nil, false, err
+	}
+	return b, true, nil
+}
+
+func replayBody(req *http.Request) (io.ReadCloser, error) {
+	b, ok, err := replayBodyOK(req)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil
+	}
+	return b, nil
 }
 
 func (t *Tripper) setProof(req *http.Request, accessToken, nonce string) error {

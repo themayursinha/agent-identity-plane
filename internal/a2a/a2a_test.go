@@ -186,6 +186,136 @@ func TestTripperRetriesUseDPoPNonce(t *testing.T) {
 	}
 }
 
+func TestTripperDoesNotRetryUnreplayableBody(t *testing.T) {
+	log, err := audit.NewLogger(filepath.Join(t.TempDir(), "a.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = log.Close() })
+	w, err := scenario.NewWorld(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := w.UserToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor, err := w.ActorToken(scenario.WLOncall)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	dest := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		n++
+		rw.Header().Set("WWW-Authenticate", `DPoP error="use_dpop_nonce", algs="EdDSA"`)
+		rw.Header().Set("DPoP-Nonce", "n-test")
+		rw.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(dest.Close)
+	client := &http.Client{Transport: &Tripper{
+		Exchanger: LocalExchanger{STS: w.STS},
+		AgentID:   scenario.Oncall,
+		Audience:  scenario.Invest,
+		ActorToken: func(ctx context.Context) (string, error) {
+			return actor, nil
+		},
+		ProofKey: func(ctx context.Context) (*token.KeyFile, error) {
+			return w.WL[scenario.WLOncall], nil
+		},
+		Now: func() time.Time { return w.Now },
+	}}
+	ctx := WithSubjectToken(context.Background(), user)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, dest.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Body = io.NopCloser(strings.NewReader("payload"))
+	req.ContentLength = int64(len("payload"))
+	req.GetBody = nil
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if n != 1 {
+		t.Fatalf("requests %d", n)
+	}
+}
+
+func TestTripperRetriesReplayableBody(t *testing.T) {
+	log, err := audit.NewLogger(filepath.Join(t.TempDir(), "a.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = log.Close() })
+	w, err := scenario.NewWorld(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := w.UserToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor, err := w.ActorToken(scenario.WLOncall)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	var got string
+	dest := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		n++
+		if n == 1 {
+			rw.Header().Set("WWW-Authenticate", `DPoP error="use_dpop_nonce", algs="EdDSA"`)
+			rw.Header().Set("DPoP-Nonce", "n-test")
+			rw.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+			rw.WriteHeader(400)
+			return
+		}
+		got = string(b)
+		rw.WriteHeader(204)
+	}))
+	t.Cleanup(dest.Close)
+	client := &http.Client{Transport: &Tripper{
+		Exchanger: LocalExchanger{STS: w.STS},
+		AgentID:   scenario.Oncall,
+		Audience:  scenario.Invest,
+		ActorToken: func(ctx context.Context) (string, error) {
+			return actor, nil
+		},
+		ProofKey: func(ctx context.Context) (*token.KeyFile, error) {
+			return w.WL[scenario.WLOncall], nil
+		},
+		Now: func() time.Time { return w.Now },
+	}}
+	ctx := WithSubjectToken(context.Background(), user)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, dest.URL, strings.NewReader("payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if n != 2 {
+		t.Fatalf("requests %d", n)
+	}
+	if got != "payload" {
+		t.Fatalf("body %q", got)
+	}
+}
+
 type countingExchanger struct {
 	inner Exchanger
 	n     *int
