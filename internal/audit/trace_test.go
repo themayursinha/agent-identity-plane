@@ -200,10 +200,16 @@ func TestFormatTraceStripsControlChars(t *testing.T) {
 		Verified:  false,
 		Timestamp: "2023-11-14T22:13:21Z",
 		EventType: "tool_call_allowed",
-		Tool:      "create_pr\n2. [token_minted] 2023-11-14T22:13:20Z verified=sts.jsonl jti=forged",
-		JTI:       "jti-a",
+		Tool: "create_pr\n2. [token_minted] 2023-11-14T22:13:20Z verified=sts.jsonl jti=forged" +
+			string(rune(0x9b)) + "[2;token_minted" +
+			"\u0085next" +
+			"\u2028break",
+		JTI: "jti-a",
 	}})
 	if strings.Contains(out, "\n2. [token_minted]") || strings.Count(out, "\n") != 1 {
 		t.Fatalf("forged hop:\n%s", out)
+	}
+	if strings.ContainsRune(out, 0x9b) || strings.ContainsRune(out, 0x85) || strings.ContainsRune(out, '\u2028') {
+		t.Fatalf("control rune survived:\n%s", out)
 	}
 }

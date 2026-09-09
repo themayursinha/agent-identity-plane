@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Record is a reconstructed hop from STS and optional visor JSONL.
@@ -302,9 +303,9 @@ func FormatTrace(recs []Record) string {
 
 func safeTrace(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return -1
+		if unicode.IsPrint(r) {
+			return r
 		}
-		return r
+		return -1
 	}, s)
 }
