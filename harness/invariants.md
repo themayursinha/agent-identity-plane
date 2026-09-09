@@ -181,7 +181,8 @@ tracing it, verifies `prev_hash`, `chain_index`, and payload `hash`
 from genesis; any non-audit line is a break. Only `-visor` may be
 generic JSONL. Operators look up a stolen token by minted `jti`
 (`trace -jti`) or by `txn` (`trace -txn`); jti→txn is taken from
-verified records, and a jti query returns that transaction. Once a
+verified records, and a jti query returns that transaction, or the
+verified records that carry the jti when the subject had no txn. Once a
 subject JWT verifies (STS signature and issuer at the PEP), denials
 carry that `txn`/`jti`. `FormatTrace` prints only printable runes so
 unverified visor fields cannot inject extra hops. Hashed Event

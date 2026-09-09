@@ -33,7 +33,8 @@ agent-identity-plane trace -txn "$TXN" -audit ./sts-audit.jsonl [-visor ./visor.
 
 `-jti` maps jti→txn from verified `-audit` records only, then returns
 every verified record for that transaction plus visor lines whose
-`txn` or `session_id` equals it. Unverified visor lines cannot choose
+`txn` or `session_id` equals it. Verified records that carry the jti
+but no txn (an IdP user token) are still returned. Unverified visor lines cannot choose
 the transaction. Output labels `verified=` / `unverified=` and the
 source path. Gateway allow/deny records are in the gateway
 `-audit-log`; pass that path as `-audit` when the incident is at the PEP.

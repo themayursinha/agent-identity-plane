@@ -38,6 +38,42 @@ func TestSTSIssuedSubjectJTIReplay(t *testing.T) {
 	}
 }
 
+func TestUserTokenDenyTraceByJTI(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	log, err := audit.NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := scenario.NewWorld(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := w.UserToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := w.Exchange(scenario.Invest, scenario.WLInvest, user, scenario.Gateway, "mcp:github:pr")
+	if res.ReasonCode == sts.ReasonOK {
+		t.Fatal("user token at investigation must deny")
+	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := audit.Trace(audit.Query{JTI: "user-session"}, []string{path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range recs {
+		if r.EventType == "token_denied" && r.JTI == "user-session" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing user-token deny in %+v", recs)
+	}
+}
+
 func TestReplayDenyAuditCarriesSubjectJTI(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.jsonl")
 	log, err := audit.NewLogger(path)

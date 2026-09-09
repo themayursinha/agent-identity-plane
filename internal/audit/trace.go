@@ -49,6 +49,8 @@ func TraceTxn(txn string, auditPath string, visorPaths ...string) ([]Record, err
 // must not choose the jti→txn mapping. A jti-only query returns every
 // record for the transaction that minted that jti on a verified audit
 // record, plus visor lines whose session_id equals that txn.
+// A verified record that carries the jti but no txn (IdP user-token
+// denials) is still returned; visor lines cannot supply that mapping.
 func Trace(q Query, auditPaths []string, visorPaths []string) ([]Record, error) {
 	q.Txn = strings.TrimSpace(q.Txn)
 	q.JTI = strings.TrimSpace(q.JTI)
@@ -78,16 +80,18 @@ func Trace(q Query, auditPaths []string, visorPaths []string) ([]Record, error) 
 		unverified = append(unverified, recs...)
 	}
 	txns := map[string]struct{}{}
+	jtiDirect := false
 	if q.JTI != "" {
 		for _, r := range verified {
 			if r.JTI != q.JTI {
 				continue
 			}
+			jtiDirect = true
 			if r.Txn != "" {
 				txns[r.Txn] = struct{}{}
 			}
 		}
-		if len(txns) == 0 {
+		if !jtiDirect {
 			return nil, nil
 		}
 		if q.Txn != "" {
@@ -101,17 +105,25 @@ func Trace(q Query, auditPaths []string, visorPaths []string) ([]Record, error) 
 	}
 	var out []Record
 	for _, r := range verified {
-		if _, ok := txns[r.Txn]; ok {
+		if _, ok := txns[r.Txn]; ok && r.Txn != "" {
+			out = append(out, r)
+			continue
+		}
+		if q.JTI != "" && r.JTI == q.JTI && r.Txn == "" {
 			out = append(out, r)
 		}
 	}
 	for _, r := range unverified {
-		if _, ok := txns[r.Txn]; ok {
-			out = append(out, r)
-			continue
+		if r.Txn != "" {
+			if _, ok := txns[r.Txn]; ok {
+				out = append(out, r)
+				continue
+			}
 		}
-		if _, ok := txns[r.SessionID]; ok {
-			out = append(out, r)
+		if r.SessionID != "" {
+			if _, ok := txns[r.SessionID]; ok {
+				out = append(out, r)
+			}
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {

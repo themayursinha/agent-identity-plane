@@ -78,6 +78,26 @@ func TestTraceJTIExpandsTxn(t *testing.T) {
 	}
 }
 
+func TestTraceJTIMatchesVerifiedRecordWithoutTxn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sts.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{EventType: "token_denied", ReasonCode: "invalid_request", JTI: "user-session", AgentID: "oncall"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = l.Close()
+	recs, err := Trace(Query{JTI: "user-session"}, []string{path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 1 || recs[0].JTI != "user-session" || recs[0].Txn != "" {
+		t.Fatalf("%+v", recs)
+	}
+}
+
 func TestTraceRejectsBrokenHash(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sts.jsonl")
 	l, err := NewLogger(path)
