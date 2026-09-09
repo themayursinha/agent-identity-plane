@@ -252,7 +252,7 @@ func (c *Config) requireDPoP(w http.ResponseWriter, r *http.Request, accessToken
 		c.writeDenyDPoP(w, http.StatusUnauthorized, ReasonInvalidDPoP, err.Error(), m)
 		return err
 	}
-	if err := c.ProofReplay.Consume(dpop.ReplayJTI(proof.JTI), proof.IAT); err != nil {
+	if err := c.ProofReplay.Consume(dpop.ReplayJTI(proof.JTI), proof.IAT, proof.JTI); err != nil {
 		if errors.Is(err, sts.ErrReplay) {
 			c.writeDenyDPoP(w, http.StatusUnauthorized, ReasonReplayedDPoP, "dpop proof jti already used", m)
 			return err

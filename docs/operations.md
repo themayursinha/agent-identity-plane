@@ -129,7 +129,8 @@ same workload key that attested the hop. Proof `jti` values are written
 to `-dpop-replay` (JSONL, mode 0600) before allow, through
 `iat + ClockSkew`. Token-endpoint proof jtis in the STS `-replay-log`
 are stored as `dpop:` + proof `jti` so they cannot occupy a subject
-token jti. Reconstruct `htu` from this request (TLS, Host,
+token jti. Unprefixed proof jtis already in that log still count as
+consumed until they expire. Reconstruct `htu` from this request (TLS, Host,
 path). Do not trust `X-Forwarded-Proto` or `X-Forwarded-Host`.
 Clients that mint a DPoP proof (the A2A tripper) set `htu` from the
 outbound URL scheme and `Host` (then `URL.Host`). `RoundTrip` still has

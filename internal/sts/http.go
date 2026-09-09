@@ -125,7 +125,7 @@ func (c *Config) handleToken(w http.ResponseWriter, r *http.Request) {
 			c.writeHTTPDeny(w, http.StatusBadRequest, "invalid_dpop_proof", err.Error(), ReasonInvalidDPoP)
 			return
 		}
-		if err := c.Replay.Consume(dpop.ReplayJTI(proof.JTI), proof.IAT); err != nil {
+		if err := c.Replay.Consume(dpop.ReplayJTI(proof.JTI), proof.IAT, proof.JTI); err != nil {
 			if errors.Is(err, ErrReplay) {
 				c.writeHTTPDeny(w, http.StatusBadRequest, "invalid_dpop_proof", "dpop proof jti already used", ReasonReplayedToken)
 				return

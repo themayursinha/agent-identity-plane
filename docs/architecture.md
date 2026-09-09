@@ -131,6 +131,7 @@ from the outbound URL (scheme+host), not from local TLS state.
 Proof `jti` values are consumed
 in `-dpop-replay` through `iat + ClockSkew`, namespaced (`dpop:` prefix)
 so they cannot collide with STS subject-token jtis if a process shares
-a consume map. Missing `cnf`, missing or
+a consume map. Unprefixed proof jtis from an earlier log are still
+treated as occupied until they expire. Missing `cnf`, missing or
 invalid DPoP, or a replayed proof is 401 with no backend. This is not
 a DPoP nonce deployment and not a Production identity plane.

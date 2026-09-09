@@ -722,6 +722,49 @@ func TestGatewayRejectsReplayedDPoP(t *testing.T) {
 	}
 }
 
+func TestGatewayRejectsLegacyUnprefixedProofJTI(t *testing.T) {
+	w := testWorld(t)
+	_, tok, err := w.HappyPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := pepReq(t, w, http.MethodPost, "/session", tok, scenario.WLInvest)
+	parts := strings.Split(req.Header.Get("DPoP"), ".")
+	if len(parts) != 3 {
+		t.Fatal("proof")
+	}
+	pb, err := token.B64Decode(parts[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pc struct {
+		JTI string `json:"jti"`
+		IAT int64  `json:"iat"`
+	}
+	if err := json.Unmarshal(pb, &pc); err != nil {
+		t.Fatal(err)
+	}
+	cache := replay(w)
+	if err := cache.Consume(pc.JTI, pc.IAT); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &gateway.Config{
+		Audience:     scenario.Gateway,
+		Verifier:     w.Verifier,
+		Audit:        w.STS.Audit,
+		IdentityOnly: true,
+		ProofReplay:  cache,
+	}
+	rw := httptest.NewRecorder()
+	cfg.Handler().ServeHTTP(rw, req)
+	if rw.Code != http.StatusUnauthorized {
+		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), gateway.ReasonReplayedDPoP) && !strings.Contains(rw.Body.String(), "already") {
+		t.Fatalf("body %s", rw.Body.String())
+	}
+}
+
 func TestGatewayIgnoresForwardedProtoForHTU(t *testing.T) {
 	w := testWorld(t)
 	_, tok, err := w.HappyPath()
