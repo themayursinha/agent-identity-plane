@@ -137,6 +137,9 @@ func TestGatewayOverwritesSpoofedVisorHeaders(t *testing.T) {
 		if r.Header.Get("X-Actor-Chain") == "" {
 			t.Error("missing actor chain")
 		}
+		if r.Header.Get("Authorization") != "" {
+			t.Errorf("bearer forwarded: %s", r.Header.Get("Authorization"))
+		}
 		rw.WriteHeader(http.StatusOK)
 		_, _ = io.WriteString(rw, "ok")
 	}))

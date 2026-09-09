@@ -114,7 +114,8 @@ complete acting-agent URI (`act.sub`); last-segment short names are
 opt-in because they can collide across prefixes. `X-Visor-Session-Id`
 is `txn`. Both overwrite any caller-supplied values after hop-by-hop
 header stripping, so a `Connection` listing those names cannot drop
-them. Missing or invalid Bearer tokens are denied and audited
+them. The STS Bearer is consumed at the PEP and is not forwarded to
+`-backend`. Missing or invalid Bearer tokens are denied and audited
 (`identity_denied`) before the response. An unwritable audit sink
 fails closed (no backend forward, no completed identity decision).
 JWKS is re-read or fetched on each verify; JWKS URLs must be `https`

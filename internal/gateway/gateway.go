@@ -158,6 +158,7 @@ func (c *Config) handlePEP(w http.ResponseWriter, r *http.Request) {
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(c.Backend)
 			pr.Out.Host = c.Backend.Host
+			pr.Out.Header.Del("Authorization")
 			applyIdentityHeaders(pr.Out.Header, m)
 		},
 	}

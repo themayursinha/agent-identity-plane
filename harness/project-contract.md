@@ -47,10 +47,10 @@ invalid file keeps the previous snapshot.
 the Bearer actor chain (a complete current actor, principal, and
 session), overwrites `X-Visor-Client-Id` / `X-Visor-Session-Id` after
 hop-by-hop stripping (client-id is the full `act.sub` unless
-`-client-short-name` is set), and reverse-proxies to `-backend` (or
-returns the mapping with `-identity-only`). Audit writes fail closed.
-JWKS URLs must be `https` except loopback `http`. visor itself is
-unchanged.
+`-client-short-name` is set), and does not forward the STS Bearer.
+It reverse-proxies to `-backend` (or returns the mapping with
+`-identity-only`). Audit writes fail closed. JWKS URLs must be
+`https` except loopback `http`. visor itself is unchanged.
 
 A deny is an authorization result (HTTP 400 with `error` / `error_description`
 and a reason code), not a process failure. Process failure is reserved for
