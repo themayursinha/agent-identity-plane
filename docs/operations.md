@@ -1,7 +1,8 @@
-# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist, v0.6 DPoP)
+# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist, v0.6 DPoP, v0.7 trace)
 
 This is an operable single-node STS, not a production identity plane.
-Loopback binds and fail-closed minting still apply.
+Loopback binds and fail-closed minting still apply. Incident procedures
+(key compromise, `trace -jti` / `-txn`) are in [runbooks.md](runbooks.md).
 
 ## TLS and reverse proxy
 
@@ -47,6 +48,9 @@ Keyring (rotate without dropping in-flight tokens):
    Reloading a published kid with different public-key bytes is rejected.
 3. Retire: wait at least mint TTL plus clock skew (`KeyRetirementWait`,
    default 150s), then remove the old key and `kill -HUP`.
+   Compromise recovery is not this wait: after the replacement kid is
+   active, remove the burned kid immediately even if in-flight tokens
+   under it fail (see [runbooks.md](runbooks.md)).
 
 ## Registry and key reload
 
@@ -68,6 +72,13 @@ hard link). Replay records require `jti` and `until`; foreign or
 incomplete JSONL fails closed at open. Retry a hop from a first-hop
 IdP token, not by replaying an STS subject token. Replay is not an
 agent denylist; see below.
+
+## Trace
+
+`agent-identity-plane trace -txn ID -audit sts-audit.jsonl` reconstructs
+hops. `trace -jti JTI` finds the transaction that minted that token.
+STS/gateway audit JSONL is hash-chain verified on open and on trace.
+See [runbooks.md](runbooks.md).
 
 ## Endpoints
 

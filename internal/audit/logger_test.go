@@ -3,8 +3,10 @@ package audit
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -60,6 +62,36 @@ func TestHashChain(t *testing.T) {
 	defer l2.Close()
 	if l2.PrevHash() != events[1].Hash {
 		t.Fatal("recover prev hash")
+	}
+}
+
+func TestRecoverRejectsBrokenHash(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{EventType: "token_minted", ReasonCode: "ok", Txn: "t1", JTI: "jti-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.Replace(string(b), `"reason_code":"ok"`, `"reason_code":"no"`, 1)
+	if tampered == string(b) {
+		t.Fatal("replace")
+	}
+	if err := os.WriteFile(path, []byte(tampered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewLogger(path)
+	if err == nil || !errors.Is(err, ErrChainBroken) {
+		t.Fatalf("got %v want ErrChainBroken", err)
 	}
 }
 

@@ -48,7 +48,8 @@ Every mint or deny writes a hash-linked JSONL record with a stable
 `reason_code` before the HTTP response is sent, including HTTP-layer
 denials that never enter `Exchange` (`rate_limited`, malformed form).
 The audit log path must not alias the replay log. Recovered audit
-records must be complete (hash-chain fields present). Allows `Sync()`
+records must be complete (hash-chain fields present). Opening that
+log verifies the hash chain (AI20). Allows `Sync()`
 the file.
 
 ## AI9 — Deterministic receipts
@@ -169,4 +170,16 @@ in the log remain occupied until expiry. The DPoP header JWK must be a public ke
 backend forward. `-dpop-replay` must not alias other exclusive
 identity files. This is not a DPoP nonce deployment and not a
 Production claim.
+
+## AI20 — Incident reconstruction verifies the audit hash chain
+
+`trace` reconstructs hops from STS/gateway audit JSONL and optional
+visor JSONL. Opening an STS or visor-gateway audit log, and tracing
+it, verifies `prev_hash`, `chain_index`, and payload `hash` from
+genesis; a break fails closed. Operators look up a stolen token by
+minted `jti` (`trace -jti`) or by `txn` (`trace -txn`); a jti query
+returns the full transaction that minted it. Planned signing-key
+rotation still waits `KeyRetirementWait`; compromise recovery removes
+the burned kid as soon as the replacement is active. This is the operator
+runbook surface for key compromise, not a Production claim.
 

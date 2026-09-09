@@ -104,6 +104,7 @@ agent-identity-plane visor-gateway \
 | AI17 | Workload JWT-SVID JWKS is fetched over https (loopback http) |
 | AI18 | Denylisted agents, workloads, and principals cannot mint or pass the PEP |
 | AI19 | visor-gateway requires a DPoP proof bound to minted `cnf.jkt` |
+| AI20 | `trace` verifies the audit hash chain and reconstructs by `txn` or `jti` |
 
 ## Architecture
 
@@ -136,11 +137,12 @@ CLI: `serve`, `visor-gateway`, `registry lint`, `token inspect|verify`, `trace`,
 - **v0.4 live workload JWKS:** `serve` may fetch JWT-SVID keys from `-spiffe-jwks-url` or `-spiffe-oidc-issuer` (same URL/TLS policy as visor-gateway). Still not Workload API.
 - **v0.5 agent denylist:** owned JSON of agent, workload, and principal IDs. Exact match. Enforced at mint and at visor-gateway (in-flight hops).
 - **v0.6 DPoP at visor-gateway:** minted tokens carry `cnf.jkt` of a workload-possessed key. visor-gateway requires a DPoP proof (`htm`/`htu`/`ath`/`jti`) whose JWK thumbprint matches, with durable proof-jti replay. Not Production (no DPoP nonce; STS exchange is still actor_token).
+- **v0.7 incident reconstruction:** `trace` verifies the STS audit hash chain and looks up hops by `txn` or minted `jti`. Key-compromise procedures are in [runbooks](docs/runbooks.md). Not Production (no live visor-only `--client-id` path; no DPoP nonce).
 - **Not a host sandbox and not an MCP policy proxy**
 
 ## Documentation
 
-[Architecture](docs/architecture.md) · [Token profile](docs/token-profile.md) · [Registry model](docs/registry-model.md) · [Threat model](docs/threat-model.md) · [Standards alignment](docs/standards-alignment.md) · [Visor integration](docs/visor-integration.md) · [Operations](docs/operations.md)
+[Architecture](docs/architecture.md) · [Token profile](docs/token-profile.md) · [Registry model](docs/registry-model.md) · [Threat model](docs/threat-model.md) · [Standards alignment](docs/standards-alignment.md) · [Visor integration](docs/visor-integration.md) · [Operations](docs/operations.md) · [Runbooks](docs/runbooks.md)
 
 ## Development
 

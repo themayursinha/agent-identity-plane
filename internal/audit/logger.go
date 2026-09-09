@@ -18,7 +18,10 @@ import (
 // receipt convention.
 const GenesisPrevHash = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e490166ae4ba7b5b37bcd8deac"
 
-var ErrUnhealthy = errors.New("audit: sink unhealthy")
+var (
+	ErrUnhealthy   = errors.New("audit: sink unhealthy")
+	ErrChainBroken = errors.New("audit: hash chain broken")
+)
 
 // Event is one STS decision record.
 type Event struct {
@@ -84,24 +87,26 @@ func (l *Logger) recover() error {
 	}
 	sc := bufio.NewScanner(l.file)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	prev := GenesisPrevHash
+	var index uint64
 	var last Event
-	var n uint64
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(line) == 0 {
 			continue
 		}
-		e, err := decodeAuditRecord(line)
+		e, err := decodeAndVerify(line, prev, index+1)
 		if err != nil {
 			return err
 		}
 		last = e
-		n++
+		prev = e.Hash
+		index = e.ChainIndex
 	}
 	if err := sc.Err(); err != nil {
 		return err
 	}
-	if n == 0 {
+	if index == 0 {
 		return nil
 	}
 	l.prevHash = last.Hash
@@ -129,6 +134,44 @@ func decodeAuditRecord(raw []byte) (Event, error) {
 	return e, nil
 }
 
+func decodeAndVerify(raw []byte, prev string, wantIndex uint64) (Event, error) {
+	e, err := decodeAuditRecord(raw)
+	if err != nil {
+		return Event{}, err
+	}
+	if err := verifyEvent(e, prev, wantIndex); err != nil {
+		return Event{}, err
+	}
+	return e, nil
+}
+
+func verifyEvent(e Event, prev string, wantIndex uint64) error {
+	if e.PrevHash != prev {
+		return fmt.Errorf("%w: prev_hash at index %d", ErrChainBroken, e.ChainIndex)
+	}
+	if e.ChainIndex != wantIndex {
+		return fmt.Errorf("%w: chain_index %d want %d", ErrChainBroken, e.ChainIndex, wantIndex)
+	}
+	want, err := payloadHash(e)
+	if err != nil {
+		return err
+	}
+	if e.Hash != want {
+		return fmt.Errorf("%w: hash mismatch at index %d", ErrChainBroken, e.ChainIndex)
+	}
+	return nil
+}
+
+func payloadHash(e Event) (string, error) {
+	e.Hash = ""
+	payload, err := json.Marshal(e)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(payload)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
 // Append writes e, filling hash-chain fields, and Syncs the file.
 func (l *Logger) Append(e Event) error {
 	l.mu.Lock()
@@ -141,14 +184,12 @@ func (l *Logger) Append(e Event) error {
 	}
 	e.PrevHash = l.prevHash
 	e.ChainIndex = l.chainIndex + 1
-	e.Hash = ""
-	payload, err := json.Marshal(e)
+	h, err := payloadHash(e)
 	if err != nil {
 		l.poisoned = true
 		return err
 	}
-	sum := sha256.Sum256(payload)
-	e.Hash = "sha256:" + hex.EncodeToString(sum[:])
+	e.Hash = h
 	line, err := json.Marshal(e)
 	if err != nil {
 		l.poisoned = true

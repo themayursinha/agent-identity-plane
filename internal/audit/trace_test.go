@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +18,7 @@ func TestTraceTxn(t *testing.T) {
 		t.Fatal(err)
 	}
 	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
-	if err := l.Append(Event{EventType: "token_minted", ReasonCode: "ok", Txn: "txn-1", AgentID: "oncall", Principal: "user1"}); err != nil {
+	if err := l.Append(Event{EventType: "token_minted", ReasonCode: "ok", Txn: "txn-1", AgentID: "oncall", Principal: "user1", JTI: "jti-a"}); err != nil {
 		t.Fatal(err)
 	}
 	_ = l.Close()
@@ -32,7 +33,66 @@ func TestTraceTxn(t *testing.T) {
 		t.Fatalf("len %d", len(recs))
 	}
 	out := FormatTrace(recs)
-	if !strings.Contains(out, "token_minted") || !strings.Contains(out, "create_pr") {
+	if !strings.Contains(out, "token_minted") || !strings.Contains(out, "create_pr") || !strings.Contains(out, "jti=jti-a") {
 		t.Fatal(out)
+	}
+}
+
+func TestTraceJTIExpandsTxn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sts.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{EventType: "token_minted", ReasonCode: "ok", Txn: "txn-1", JTI: "jti-a", AgentID: "oncall"}); err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_001, 0).UTC() })
+	if err := l.Append(Event{EventType: "token_minted", ReasonCode: "ok", Txn: "txn-1", JTI: "jti-b", AgentID: "invest"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = l.Close()
+	recs, err := Trace(Query{JTI: "jti-a"}, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 2 {
+		t.Fatalf("len %d", len(recs))
+	}
+	if recs[0].JTI != "jti-a" || recs[1].JTI != "jti-b" {
+		t.Fatalf("%+v", recs)
+	}
+	none, err := Trace(Query{Txn: "txn-other", JTI: "jti-a"}, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(none) != 0 {
+		t.Fatalf("intersect %d", len(none))
+	}
+}
+
+func TestTraceRejectsBrokenHash(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sts.jsonl")
+	l, err := NewLogger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetNow(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	if err := l.Append(Event{EventType: "token_minted", ReasonCode: "ok", Txn: "txn-1", JTI: "jti-a"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = l.Close()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.Replace(string(b), `"reason_code":"ok"`, `"reason_code":"no"`, 1)
+	if err := os.WriteFile(path, []byte(tampered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = TraceTxn("txn-1", path)
+	if err == nil || !errors.Is(err, ErrChainBroken) {
+		t.Fatalf("got %v want ErrChainBroken", err)
 	}
 }
