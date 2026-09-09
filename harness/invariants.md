@@ -247,8 +247,9 @@ nonce. `demo -strict` fetches a visor-gateway identity-only mapping
 (with nonce retry) and rejects extra identity flags. Operator steps are
 in `docs/deploy.md`. Advertised `serve` paths generate keys locally
 (`keys generate` / `keys jwks`); this repo does not ship private keys.
-Each localkeys verifying JWK carries `sub`; Attest requires it to match
-the actor token subject. SPIFFE JWT-SVID JWKS keys are issuer keys and
-do not use that binding. This version is operator-ready. It is not a
-Production claim.
+`token mint` signs those keys and POSTs `/oauth/token` so visor-session
+is not left with an empty `$JWT`. Each localkeys verifying JWK carries
+`sub`; Attest requires it to match the actor token subject. SPIFFE
+JWT-SVID JWKS keys are issuer keys and do not use that binding. This
+version is operator-ready. It is not a Production claim.
 

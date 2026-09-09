@@ -61,7 +61,7 @@ agent-identity-plane registry lint testdata/registry.json
 `testdata/` ships `registry.json` and `denylist.json` only. It does not
 contain STS, IdP, or workload private keys. To run `serve` /
 `visor-gateway` / `visor-session` on loopback, generate those keys first
-(`keys generate`, `keys jwks`) using [docs/deploy.md](docs/deploy.md).
+(`keys generate`, `keys jwks`, `token mint`) using [docs/deploy.md](docs/deploy.md).
 
 ## What it enforces
 
@@ -107,7 +107,7 @@ user --session--> oncall-agent --RFC 8693 exchange--> STS
 
 Core packages: `internal/token`, `internal/registry`, `internal/attest`, `internal/sts`, `internal/verify`, `internal/a2a`, `internal/audit`, `internal/visoradapter`, `internal/gateway`, `internal/denylist`, `internal/dpop`, `internal/visorsession`.
 
-CLI: `serve`, `visor-gateway`, `visor-session`, `registry lint`, `token inspect|verify`, `trace`, `keys generate`, `demo`.
+CLI: `serve`, `visor-gateway`, `visor-session`, `registry lint`, `token inspect|verify|mint`, `trace`, `keys generate`, `demo`.
 
 ## Security model
 

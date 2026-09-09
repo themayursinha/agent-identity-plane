@@ -35,7 +35,7 @@ is written (AI8), and no token is issued.
 ## CLI contract
 
 Subcommands: `serve`, `visor-gateway`, `visor-session`, `registry lint`,
-`token inspect`, `token verify`, `trace`, `keys generate`, `keys jwks`, `demo`, `version`.
+`token inspect`, `token verify`, `token mint`, `trace`, `keys generate`, `keys jwks`, `demo`, `version`.
 
 `serve` loads a 0600 signing key or keyring (`active_kid` + `keys`),
 rejects group/world-readable key files, optional `-tls-cert`/`-tls-key`,

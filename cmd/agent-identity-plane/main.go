@@ -34,7 +34,7 @@ func main() {
 		err = cmdRegistryLint(os.Args[3:])
 	case "token":
 		if len(os.Args) < 3 {
-			err = fmt.Errorf("usage: agent-identity-plane token inspect|verify ...")
+			err = fmt.Errorf("usage: agent-identity-plane token inspect|verify|mint ...")
 			break
 		}
 		switch os.Args[2] {
@@ -42,6 +42,8 @@ func main() {
 			err = cmdTokenInspect(os.Args[3:])
 		case "verify":
 			err = cmdTokenVerify(os.Args[3:])
+		case "mint":
+			err = cmdTokenMint(os.Args[3:])
 		default:
 			err = fmt.Errorf("unknown token subcommand %s", os.Args[2])
 		}
@@ -86,6 +88,7 @@ Commands:
   registry lint FILE    Strict-decode and validate a registry JSON file
   token inspect TOKEN   Decode a JWT without verifying the signature
   token verify ...      Verify a JWT against a JWKS and audience
+  token mint            Sign user/actor JWTs and POST /oauth/token
   trace                 Reconstruct a txn or minted jti from STS and visor JSONL logs
   keys generate         Write a new Ed25519 key file (mode 0600; -sub binds workload keys)
   keys jwks             Write a public JWKS from one or more 0600 key files

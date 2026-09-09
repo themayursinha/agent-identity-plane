@@ -34,6 +34,8 @@ agent-identity-plane keys jwks \
   -in ./run/wl-monitor.json \
   -out ./run/workloads.json
 
+# Run serve and visor-gateway in their own terminals, then mint:
+
 agent-identity-plane serve \
   -listen 127.0.0.1:8080 \
   -registry testdata/registry.json \
@@ -56,6 +58,26 @@ agent-identity-plane visor-gateway \
   -denylist testdata/denylist.json \
   -dpop-replay ./run/gateway-dpop.jsonl
 
+HOP1=$(agent-identity-plane token mint \
+  -sts http://127.0.0.1:8080/oauth/token \
+  -issuer https://sts.example.test \
+  -idp-key ./run/idp.json \
+  -idp-issuer https://idp.example.test \
+  -user user1 \
+  -actor-key ./run/wl-oncall.json \
+  -agent-id spiffe://example.test/agent/oncall \
+  -audience spiffe://example.test/agent/investigation \
+  -scope "mcp:github:pr mcp:alerts:read")
+
+JWT=$(agent-identity-plane token mint \
+  -sts http://127.0.0.1:8080/oauth/token \
+  -issuer https://sts.example.test \
+  -subject-token "$HOP1" \
+  -actor-key ./run/wl-invest.json \
+  -agent-id spiffe://example.test/agent/investigation \
+  -audience https://mcp-gateway.example.test \
+  -scope mcp:github:pr)
+
 agent-identity-plane visor-session \
   -gateway http://127.0.0.1:8090/session \
   -token "$JWT" \
@@ -64,10 +86,10 @@ agent-identity-plane visor-session \
   -- -policy policy.yaml
 ```
 
-`$JWT` is an STS-minted access token for audience
-`https://mcp-gateway.example.test`, not a file in this repo. Actor
-tokens are signed with the workload private keys above; first-hop user
-tokens must verify against `./run/idp-jwks.json`.
+`token mint` signs the user or prior-hop JWT and the workload actor
+JWT from the 0600 keys above, then POSTs RFC 8693 exchange. The
+investigation hop's access token is the visor-session Bearer; its
+`cnf.jkt` is the investigation workload key.
 
 `visor-session` POSTs the access token with DPoP and retries once on
 `use_dpop_nonce`. Identity flags come only from that mapping.

@@ -28,6 +28,11 @@ bundle must be generated with `-sub` so each verifying JWK is bound to
 that subject; an unbound localkeys JWK is unattested. Do not commit
 private keys. The visor-only copy-paste is [deploy.md](deploy.md).
 
+`token mint` signs a first-hop user JWT (`-idp-key`) or a later hop
+from `-subject-token`, signs the workload actor JWT (`-actor-key` with
+`-sub`), and POSTs `/oauth/token`. The STS URL must be `https` or
+loopback `http`. Redirects are rejected.
+
 Single key:
 
 ```json
