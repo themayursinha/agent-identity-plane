@@ -350,6 +350,40 @@ func TestNewServerRequiresAudit(t *testing.T) {
 	}
 }
 
+func TestNewServerRejectsEmptyIssuer(t *testing.T) {
+	w := testWorld(t)
+	v := *w.Verifier
+	v.Issuer = ""
+	cfg := &gateway.Config{
+		Bind:         "127.0.0.1:8090",
+		Audience:     scenario.Gateway,
+		Verifier:     &v,
+		Audit:        w.STS.Audit,
+		IdentityOnly: true,
+	}
+	if _, err := gateway.NewServer(cfg); err == nil {
+		t.Fatal("expected issuer required")
+	}
+}
+
+func TestNewServerRejectsNonHTTPBackend(t *testing.T) {
+	w := testWorld(t)
+	u, err := url.Parse("ftp://127.0.0.1:21/mcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &gateway.Config{
+		Bind:     "127.0.0.1:8090",
+		Audience: scenario.Gateway,
+		Verifier: w.Verifier,
+		Audit:    w.STS.Audit,
+		Backend:  u,
+	}
+	if _, err := gateway.NewServer(cfg); err == nil {
+		t.Fatal("expected http/https backend")
+	}
+}
+
 func TestGatewayRejectsTokenWithoutActor(t *testing.T) {
 	w := testWorld(t)
 	tok, err := w.STS.Signer.SignClaims(token.Claims{

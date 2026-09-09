@@ -71,8 +71,11 @@ func cmdVisorGateway(args []string) error {
 	}
 	if *backend != "" {
 		u, err := url.Parse(*backend)
-		if err != nil || u.Scheme == "" || u.Host == "" {
+		if err != nil {
 			return fmt.Errorf("visor-gateway: invalid -backend")
+		}
+		if err := gateway.CheckBackend(u); err != nil {
+			return err
 		}
 		cfg.Backend = u
 	}

@@ -219,14 +219,17 @@ func NewServer(cfg *Config) (*Server, error) {
 	if (cfg.TLSCertFile == "") != (cfg.TLSKeyFile == "") {
 		return nil, fmt.Errorf("gateway: -tls-cert and -tls-key must be set together")
 	}
-	if cfg.Verifier == nil || cfg.Audience == "" {
-		return nil, fmt.Errorf("gateway: verifier and audience required")
+	if cfg.Verifier == nil || cfg.Audience == "" || strings.TrimSpace(cfg.Verifier.Issuer) == "" {
+		return nil, fmt.Errorf("gateway: verifier, audience, and issuer required")
 	}
 	if cfg.Audit == nil {
 		return nil, fmt.Errorf("gateway: audit required")
 	}
 	if !cfg.IdentityOnly && cfg.Backend == nil {
 		return nil, fmt.Errorf("gateway: -backend or -identity-only is required")
+	}
+	if err := CheckBackend(cfg.Backend); err != nil {
+		return nil, err
 	}
 	srv := &http.Server{
 		Addr:              bind,
@@ -247,6 +250,22 @@ func (s *Server) ListenAndServe() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error { return s.HTTP.Shutdown(ctx) }
+
+// CheckBackend allows only http and https backends. Nil is valid for identity-only.
+func CheckBackend(u *url.URL) error {
+	if u == nil {
+		return nil
+	}
+	if u.Host == "" {
+		return fmt.Errorf("gateway: -backend must be http or https")
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+		return nil
+	default:
+		return fmt.Errorf("gateway: -backend must be http or https")
+	}
+}
 
 type tokenBucket struct {
 	mu     sync.Mutex
