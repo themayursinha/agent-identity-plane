@@ -66,6 +66,31 @@ func TestIdentityOnlyGateway(t *testing.T) {
 	}
 }
 
+func TestGatewayDefaultClientIDIsFullActorURI(t *testing.T) {
+	w := testWorld(t)
+	_, tok, err := w.HappyPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &gateway.Config{
+		Audience:     scenario.Gateway,
+		Verifier:     w.Verifier,
+		Audit:        w.STS.Audit,
+		IdentityOnly: true,
+	}
+	req := httptest.NewRequest(http.MethodPost, "/session", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rw := httptest.NewRecorder()
+	cfg.Handler().ServeHTTP(rw, req)
+	if rw.Code != 200 {
+		t.Fatalf("status %d %s", rw.Code, rw.Body.String())
+	}
+	want := scenario.Invest
+	if got := rw.Header().Get("X-Visor-Client-Id"); got != want {
+		t.Fatalf("client-id %s want %s", got, want)
+	}
+}
+
 func TestGatewayRejectsMissingBearer(t *testing.T) {
 	w := testWorld(t)
 	path := filepath.Join(t.TempDir(), "g-audit.jsonl")

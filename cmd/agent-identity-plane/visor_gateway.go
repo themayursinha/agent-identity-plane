@@ -24,7 +24,7 @@ func cmdVisorGateway(args []string) error {
 	jwksURL := fs.String("jwks-url", "", "STS JWKS URL (https, or loopback http)")
 	backend := fs.String("backend", "", "reverse-proxy base URL for an HTTP service (not visor stdio)")
 	identityOnly := fs.Bool("identity-only", false, "verify and return mapping JSON without proxying")
-	shortName := fs.Bool("client-short-name", true, "derive visor client-id from the last URI segment")
+	shortName := fs.Bool("client-short-name", false, "opt-in last URI segment as visor client-id (can collide across prefixes)")
 	auditPath := fs.String("audit-log", "", "hash-linked JSONL audit path (required)")
 	tlsCert := fs.String("tls-cert", "", "PEM certificate for HTTPS (requires -tls-key)")
 	tlsKey := fs.String("tls-key", "", "PEM private key for HTTPS (requires -tls-cert)")

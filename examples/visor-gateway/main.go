@@ -20,7 +20,7 @@ func main() {
 	jwksURL := flag.String("jwks-url", "", "STS JWKS URL (https, or loopback http)")
 	backend := flag.String("backend", "", "reverse-proxy base URL")
 	identityOnly := flag.Bool("identity-only", true, "return mapping JSON without proxying")
-	shortName := flag.Bool("client-short-name", true, "derive visor client-id from the last URI segment")
+	shortName := flag.Bool("client-short-name", false, "opt-in last URI segment as visor client-id (can collide across prefixes)")
 	auditPath := flag.String("audit-log", "", "audit JSONL (required)")
 	flag.Parse()
 

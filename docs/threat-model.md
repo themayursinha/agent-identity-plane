@@ -41,6 +41,7 @@ This document is an engineering threat model, not a compliance claim.
 - Revocation is TTL + durable `jti` replay at exchange for STS-issued subject tokens (including clock skew and process restart); there is no agent denylist in v0.3.
 - Proof-of-possession (WPT / DPoP) is not implemented; minted tokens are bearer tokens with short TTL and single audience.
 - visor-gateway `-backend` is an HTTP reverse-proxy. mcp-visor `serve` is stdio; use `-identity-only` and start visor with the derived `--client-id` / `--session-id`.
+- `-client-short-name` is opt-in. Last URI segments are not unique across prefixes; the default client-id is the full `act.sub`.
 - Cross-domain federation (OAuth Identity Chaining) is not implemented.
 
 ## Residual risk

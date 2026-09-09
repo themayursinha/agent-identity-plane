@@ -11,7 +11,8 @@ Agent Identity Plane fills that gap **without modifying mcp-visor**:
 2. `agent-identity-plane visor-gateway` verifies the Bearer token (JWKS
    file or `https` URL, re-fetched on each request).
 3. `internal/visoradapter` maps the verified chain:
-   - `--client-id` ← acting agent (`act.sub`), optionally the last URI segment
+   - `--client-id` ← acting agent (`act.sub`). `-client-short-name` is
+     opt-in and uses the last URI segment; that can collide across prefixes.
    - `--session-id` ← `txn`
 4. `-identity-only` returns that mapping as JSON and headers. Start
    `mcp-visor serve -client-id … -session-id …` with those values for
@@ -56,11 +57,12 @@ user1 > spiffe://example.test/agent/oncall > spiffe://example.test/agent/investi
 txn = txn-abc
 ```
 
-Visor flags (`-client-short-name`):
+Visor flags (default: full `act.sub`):
 
 ```text
-mcp-visor serve -client-id investigation -session-id txn-abc ...
+mcp-visor serve -client-id spiffe://example.test/agent/investigation -session-id txn-abc ...
 ```
 
-A visor policy `identities[]` entry named `investigation` then applies to a
-*verified* actor, not a spoofable CLI string.
+`-client-short-name` is opt-in (`-client-id investigation`). Last-segment
+names are not unique across URI prefixes, so visor `identities[]` must
+be written for the identifier the gateway actually emits.

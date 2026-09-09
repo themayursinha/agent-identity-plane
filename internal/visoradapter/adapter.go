@@ -22,7 +22,8 @@ type Mapping struct {
 // Options controls how agent URIs become visor identity names.
 type Options struct {
 	// ShortName, when true, uses the last path segment of the acting agent
-	// URI as ClientID so it can match a compact identities[] name.
+	// URI as ClientID. This is opt-in: last segments are not unique across
+	// URI prefixes, so the default mapping is the complete act.sub.
 	ShortName bool
 }
 
