@@ -199,3 +199,27 @@ must be regenerated; `-jwks-url` re-fetches. Preload still mints on
 the burned `active_kid` until activate. This is the operator runbook
 surface for key compromise, not a Production claim.
 
+## AI21 — visor-session is the only supported `--client-id` path
+
+`visor-session` POSTs the STS access token to visor-gateway with a
+DPoP proof (`Authorization: DPoP` plus the `DPoP` header). The gateway
+URL uses the same policy as JWKS (`https`, or loopback `http`; TLS
+1.2+; 1MiB body; query and fragment rejected so DPoP `htu` matches).
+HTTP redirects are not followed (DPoP `htm`/`htu` stay bound to the
+configured URL). Only a complete mapping (`client_id`, `session_id`, acting agent,
+principal) from that identity-only response is passed to `mcp-visor serve`.
+The response must be `application/vnd.aip.visor-mapping+json` with
+`X-Visor-Client-Id` / `X-Visor-Session-Id` equal to the JSON, and those
+fields must match the access token (`txn`, `sub`, `act.sub`). visor-gateway
+`-backend` strips that media type and those headers from proxied
+responses. Extra
+visor arguments cannot set `-client-id`, `--client-id`, `-session-id`,
+or `--session-id` (including `=` forms). `-dpop-key` is a 0600 Ed25519
+key or keyring file. `-print` prints argv and does not exec. Starting
+`mcp-visor` by hand with a typed `--client-id` is still spoofable; this
+command is the supported authentic path. On Unix, `visor-session`
+replaces itself with visor so SIGTERM hits visor, and the visor
+environment does not inherit `AIP_ACCESS_TOKEN` (name match is
+case-insensitive). Exec is Unix-only (`-print` still works). This is not a DPoP nonce
+deployment and not a Production claim.
+

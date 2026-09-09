@@ -1,4 +1,4 @@
-# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist, v0.6 DPoP, v0.7 trace)
+# Operations (v0.2 STS, v0.3 visor-gateway, v0.4 live workload JWKS, v0.5 denylist, v0.6 DPoP, v0.7 trace, v0.8 visor-session)
 
 This is an operable single-node STS, not a production identity plane.
 Loopback binds and fail-closed minting still apply. Incident procedures
@@ -117,8 +117,35 @@ agent-identity-plane visor-gateway \
 `GET /healthz`, `GET /readyz` (JWKS fetchable), `GET /metrics`.
 `-backend URL` reverse-proxies after verify and overwrites `X-Visor-*`.
 Rate limit default 30/s. `-audit-log`, `-denylist`, and `-dpop-replay`
-are required and must not alias `-jwks`. Use `-identity-only` to obtain `--client-id` / `--session-id`
-for a stdio visor process; visor stdio is not an HTTP backend.
+are required and must not alias `-jwks`. Use `-identity-only` plus
+`visor-session` to start a stdio visor process with the derived
+`--client-id` / `--session-id`; visor stdio is not an HTTP backend.
+
+## visor-session
+
+`agent-identity-plane visor-session` is the supported authentic start
+for mcp-visor. It POSTs to visor-gateway with DPoP and execs visor
+using only the returned mapping. Extra arguments after `--` are visor
+policy flags; they cannot set `-client-id` or `-session-id`.
+
+```bash
+agent-identity-plane visor-session \
+  -gateway http://127.0.0.1:8090/session \
+  -token "$JWT" \
+  -dpop-key workload.json \
+  -visor-bin mcp-visor \
+  -- -policy policy.yaml
+```
+
+`-gateway` must be `https` except loopback `http`, with no query or
+fragment (DPoP `htu` matches the PEP). Redirects are not followed.
+Identity-only responses use `application/vnd.aip.visor-mapping+json`;
+a `-backend` body is not a mapping. `-dpop-key` is mode `0600`.
+`-print` prints argv and does not exec. The token may be passed as
+`-token` or `AIP_ACCESS_TOKEN`. On Unix the process is replaced by
+visor, and `AIP_ACCESS_TOKEN` is stripped from visor's environment
+(case-insensitive name). Exec is Unix-only. Typing `mcp-visor serve -client-id …`
+by hand is still spoofable. There is no DPoP nonce.
 
 ## Denylist
 

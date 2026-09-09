@@ -24,7 +24,7 @@ The design composes RFC 8693, WIMSE identifiers, and the AIMS (`draft-klrc-aiage
 | [**authority-graph-simulator**](https://github.com/themayursinha/authority-graph-simulator) | What authority can an agent *reach*? (counterfactual delegation analysis) | Prototype |
 | [**capability-delta-receipts**](https://github.com/themayursinha/capability-delta-receipts) | What capability can an agent *acquire*? (trajectory-level capability accounting) | Prototype |
 
-mcp-visor’s `--client-id` is an operator-supplied string and is not authenticated. This project issues a verified actor chain and a visor-gateway that derives `--client-id` and `--session-id` from that chain, closing the spoofed-identity gap without replacing Visor’s action policy. See [docs/visor-integration.md](docs/visor-integration.md). The two prototypes are standalone proofs; visor also ships an opt-in capability evaluator aligned with capability-delta-receipts. The authority-graph is not in the proxy.
+mcp-visor’s `--client-id` is an operator-supplied string and is not authenticated. This project issues a verified actor chain and a visor-gateway that derives `--client-id` and `--session-id` from that chain. `visor-session` is the supported path that starts mcp-visor with those values; typing the flags by hand is still spoofable. See [docs/visor-integration.md](docs/visor-integration.md). The two prototypes are standalone proofs; visor also ships an opt-in capability evaluator aligned with capability-delta-receipts. The authority-graph is not in the proxy.
 
 ---
 
@@ -79,6 +79,14 @@ agent-identity-plane visor-gateway \
   -audit-log ./gateway-audit.jsonl \
   -denylist testdata/denylist.json \
   -dpop-replay ./gateway-dpop.jsonl
+
+# Supported visor start: mapping from visor-gateway only (not a typed --client-id)
+agent-identity-plane visor-session \
+  -gateway http://127.0.0.1:8090/session \
+  -token "$JWT" \
+  -dpop-key workload.json \
+  -visor-bin mcp-visor \
+  -- -policy policy.yaml
 ```
 
 ## What it enforces
@@ -105,6 +113,7 @@ agent-identity-plane visor-gateway \
 | AI18 | Denylisted agents, workloads, and principals cannot mint or pass the PEP |
 | AI19 | visor-gateway requires a DPoP proof bound to minted `cnf.jkt` |
 | AI20 | `trace` verifies the audit hash chain and reconstructs by `txn` or `jti` |
+| AI21 | `visor-session` starts mcp-visor only with visor-gateway mapping identity |
 
 ## Architecture
 
@@ -117,12 +126,12 @@ user --session--> oncall-agent --RFC 8693 exchange--> STS
                          |
                          | JWT aud=mcp-gateway
                          v
-                   visor-gateway --verified --client-id--> mcp-visor --policy--> MCP server
+                   visor-gateway --identity-only JSON--> visor-session --mcp-visor serve -client-id--> mcp-visor --policy--> MCP server
 ```
 
-Core packages: `internal/token`, `internal/registry`, `internal/attest`, `internal/sts`, `internal/verify`, `internal/a2a`, `internal/audit`, `internal/visoradapter`, `internal/gateway`, `internal/denylist`, `internal/dpop`.
+Core packages: `internal/token`, `internal/registry`, `internal/attest`, `internal/sts`, `internal/verify`, `internal/a2a`, `internal/audit`, `internal/visoradapter`, `internal/gateway`, `internal/denylist`, `internal/dpop`, `internal/visorsession`.
 
-CLI: `serve`, `visor-gateway`, `registry lint`, `token inspect|verify`, `trace`, `keys generate`, `demo`.
+CLI: `serve`, `visor-gateway`, `visor-session`, `registry lint`, `token inspect|verify`, `trace`, `keys generate`, `demo`.
 
 ## Security model
 
@@ -137,7 +146,8 @@ CLI: `serve`, `visor-gateway`, `registry lint`, `token inspect|verify`, `trace`,
 - **v0.4 live workload JWKS:** `serve` may fetch JWT-SVID keys from `-spiffe-jwks-url` or `-spiffe-oidc-issuer` (same URL/TLS policy as visor-gateway). Still not Workload API.
 - **v0.5 agent denylist:** owned JSON of agent, workload, and principal IDs. Exact match. Enforced at mint and at visor-gateway (in-flight hops).
 - **v0.6 DPoP at visor-gateway:** minted tokens carry `cnf.jkt` of a workload-possessed key. visor-gateway requires a DPoP proof (`htm`/`htu`/`ath`/`jti`) whose JWK thumbprint matches, with durable proof-jti replay. Not Production (no DPoP nonce; STS exchange is still actor_token).
-- **v0.7 incident reconstruction:** `trace -audit` verifies the STS/gateway hash chain (not a MAC) and looks up hops by `txn` or minted `jti` from verified records. Key-compromise procedures are in [runbooks](docs/runbooks.md). Not Production (no live visor-only `--client-id` path; no DPoP nonce).
+- **v0.7 incident reconstruction:** `trace -audit` verifies the STS/gateway hash chain (not a MAC) and looks up hops by `txn` or minted `jti` from verified records. Key-compromise procedures are in [runbooks](docs/runbooks.md). Not Production (no DPoP nonce).
+- **v0.8 visor-session:** the supported path that starts mcp-visor with `-client-id` / `-session-id` taken only from a visor-gateway identity-only mapping. Extra visor args cannot set those flags. Typing `mcp-visor serve -client-id …` by hand is still spoofable. Not Production (no DPoP nonce).
 - **Not a host sandbox and not an MCP policy proxy**
 
 ## Documentation

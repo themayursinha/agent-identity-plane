@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/themayursinha/agent-identity-plane/internal/audit"
+	"github.com/themayursinha/agent-identity-plane/internal/token"
 )
 
 func TestCLIDemoAndLint(t *testing.T) {
@@ -53,7 +55,7 @@ func TestCLIDemoAndLint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "v0.7.0") {
+	if !strings.Contains(string(out), "v0.8.0") {
 		t.Fatalf("version %s", out)
 	}
 
@@ -73,6 +75,50 @@ func TestCLIDemoAndLint(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "-dpop-replay") {
 		t.Fatalf("visor-gateway usage: %s", out)
+	}
+
+	vs := exec.Command(bin, "visor-session")
+	out, err = vs.CombinedOutput()
+	if err == nil {
+		t.Fatal("visor-session without flags must fail")
+	}
+	if !strings.Contains(string(out), "-gateway") || !strings.Contains(string(out), "-dpop-key") {
+		t.Fatalf("visor-session usage: %s", out)
+	}
+}
+
+func TestCLIVisorSessionRejectsTypedClientID(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "aip")
+	cmd := exec.Command("go", "build", "-o", bin, ".")
+	cmd.Dir = "."
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	kf, err := token.GenerateEd25519("wl-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPath := filepath.Join(t.TempDir(), "workload.json")
+	b, err := json.Marshal(kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	vs := exec.Command(bin, "visor-session",
+		"-gateway", "http://127.0.0.1:1/session",
+		"-token", "x",
+		"-dpop-key", keyPath,
+		"-print",
+		"--", "-client-id", "spoofed")
+	out, err = vs.CombinedOutput()
+	if err == nil {
+		t.Fatalf("typed client-id must fail: %s", out)
+	}
+	if !strings.Contains(string(out), "identity flags") {
+		t.Fatalf("visor-session reject: %s", out)
 	}
 }
 

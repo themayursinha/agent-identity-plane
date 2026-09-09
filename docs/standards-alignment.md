@@ -12,7 +12,7 @@ complete AIMS or WIMSE deployment.
 | [draft-ietf-oauth-transaction-tokens-11](https://datatracker.ietf.org/doc/draft-ietf-oauth-transaction-tokens/) | Immutable `sub`/`txn`, short-lived context tokens | Full Txn-Token processing, `purp` authorization semantics |
 | [draft-oauth-transaction-tokens-for-agents-06](https://www.ietf.org/archive/id/draft-oauth-transaction-tokens-for-agents-06.html) | Flat `actchain` plus current `act` | Replacement-flow TTS specifics |
 | WIMSE identifier / workload-creds / WPT | URI identifiers; JWT-SVID-shaped actor tokens; OIDC JWKS discovery for those tokens | X.509 SVIDs, Workload Proof Tokens, mTLS, SPIRE Workload API |
-| mcp-visor threat model | Spoofed `--client-id` is unauthenticated | In-proxy `lineage_require` (proposed in visor-integration.md) |
+| mcp-visor threat model | Spoofed `--client-id` is unauthenticated | In-proxy `lineage_require` (proposed in visor-integration.md). visor-session is the supported authentic start without changing visor. |
 
 Differentiation versus related OSS (Charon, PingFederate demos, KAIF): this
 repo is Go, standard-library only, deterministic, fail-closed, and designed as

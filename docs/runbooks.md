@@ -1,8 +1,10 @@
-# Operator runbooks (v0.7)
+# Operator runbooks (v0.8)
 
 These procedures use the shipped CLI. This is still not a Production
-identity plane: there is no DPoP nonce, and visor `--client-id` is
-authentic only when visor-gateway is the only path that sets it.
+identity plane: there is no DPoP nonce. visor `--client-id` is authentic
+only when `visor-session` (or visor-gateway `-backend` header overwrite)
+is the path that sets it. Typing `mcp-visor serve -client-id …` by hand
+is still spoofable.
 
 ## Incident reconstruction
 

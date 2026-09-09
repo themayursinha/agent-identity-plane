@@ -15,9 +15,12 @@ Agent Identity Plane fills that gap **without modifying mcp-visor**:
    - `--client-id` ← acting agent (`act.sub`). `-client-short-name` is
      opt-in and uses the last URI segment; that can collide across prefixes.
    - `--session-id` ← `txn`
-4. `-identity-only` returns that mapping as JSON and headers. Start
-   `mcp-visor serve -client-id … -session-id …` with those values for
-   the session. visor stdio is not an HTTP server.
+4. `-identity-only` returns that mapping as JSON and headers.
+   `agent-identity-plane visor-session` POSTs to that endpoint with
+   DPoP and starts `mcp-visor serve -client-id … -session-id …` with
+   **only** those returned values. Extra visor args cannot set identity
+   flags. visor stdio is not an HTTP server. Typing `mcp-visor serve
+   -client-id …` by hand is still spoofable.
 5. `-backend` reverse-proxies to an HTTP service (for example a
    streamable-HTTP MCP front) and overwrites `X-Visor-Client-Id` /
    `X-Visor-Session-Id` so a caller cannot spoof them.
@@ -46,9 +49,10 @@ token gate:
 - Audit `lineage` object on allow/deny, without changing the hash-chain core
 
 Until that lands, visor-gateway is the enforcement point that makes visor
-identity policy meaningful: only a verified chain that is not denylisted
-and that presents a valid DPoP proof produces the `--client-id` /
-`--session-id` you pass to visor.
+identity policy meaningful, and `visor-session` is the supported path
+that starts visor with that mapping. Only a verified chain that is not
+denylisted and that presents a valid DPoP proof produces the
+`--client-id` / `--session-id` visor-session passes to visor.
 
 ## Mapping example
 
@@ -59,10 +63,20 @@ user1 > spiffe://example.test/agent/oncall > spiffe://example.test/agent/investi
 txn = txn-abc
 ```
 
-Visor flags (default: full `act.sub`):
+Supported start (default: full `act.sub`):
 
 ```text
-mcp-visor serve -client-id spiffe://example.test/agent/investigation -session-id txn-abc ...
+agent-identity-plane visor-session \
+  -gateway http://127.0.0.1:8090/session \
+  -token "$JWT" \
+  -dpop-key workload.json \
+  -- -policy policy.yaml
+```
+
+That execs:
+
+```text
+mcp-visor serve -client-id spiffe://example.test/agent/investigation -session-id txn-abc -policy policy.yaml
 ```
 
 `-client-short-name` is opt-in (`-client-id investigation`). Last-segment
