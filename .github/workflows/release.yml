@@ -34,6 +34,15 @@ jobs:
                 -o "${out}" ./cmd/agent-identity-plane
             done
           done
+      - name: Generate SBOM for release binaries
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26  # v0.24.2
+        with:
+          path: ./dist
+          format: spdx-json
+          output-file: ./dist/sbom.spdx.json
+      - name: Checksum release assets
+        run: |
+          set -euo pipefail
           cd dist
           sha256sum * > checksums.txt
       - uses: softprops/action-gh-release@6da8fa9354ddfdc4aeace5fc48d7f679b5214090  # v2.2.1
