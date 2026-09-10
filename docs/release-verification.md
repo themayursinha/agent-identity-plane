@@ -14,7 +14,8 @@ Verify a download (replace `vX.Y.Z` with the release tag):
 ```bash
 # verify only the binary you downloaded (checksums.txt lists every binary;
 # the end anchor keeps similarly-named entries out; the asset keeps the tag's v)
-ASSET=agent-identity-plane_vX.Y.Z_linux_amd64
+OS=linux; ARCH=amd64  # darwin|windows; amd64|arm64 (append .exe on windows)
+ASSET=agent-identity-plane_vX.Y.Z_${OS}_${ARCH}
 grep " $ASSET$" checksums.txt | sha256sum -c   # Linux
 grep " $ASSET$" checksums.txt | shasum -a 256 -c  # macOS
 gh attestation verify checksums.txt --repo themayursinha/agent-identity-plane
