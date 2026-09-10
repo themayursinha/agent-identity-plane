@@ -20,11 +20,11 @@ The design composes RFC 8693, WIMSE identifiers, and the AIMS (`draft-klrc-aiage
 | Repo | Question it answers | Status |
 |---|---|---|
 | [**mcp-visor**](https://github.com/themayursinha/mcp-visor) | What may an agent *do*? (runtime policy at the MCP `tools/call` boundary) | Production |
-| [**agent-identity-plane**](https://github.com/themayursinha/agent-identity-plane) | *Who* is acting, for whom, through which chain? (identity + provenance) | **v1.0** |
+| [**agent-identity-plane**](https://github.com/themayursinha/agent-identity-plane) | *Who* is acting, for whom, through which chain? (identity + provenance) | **v1.0.0** |
 | [**authority-graph-simulator**](https://github.com/themayursinha/authority-graph-simulator) | What authority can an agent *reach*? (counterfactual delegation analysis) | Prototype |
 | [**capability-delta-receipts**](https://github.com/themayursinha/capability-delta-receipts) | What capability can an agent *acquire*? (trajectory-level capability accounting) | Prototype |
 
-mcp-visor’s `--client-id` is an operator-supplied string and is not authenticated. This project issues a verified actor chain and a visor-gateway that derives `--client-id` and `--session-id` from that chain. `visor-session` is the supported path that starts mcp-visor with those values; typing the flags by hand is still spoofable. See [docs/visor-integration.md](docs/visor-integration.md) and [docs/deploy.md](docs/deploy.md). v1.0 is operator-ready, not a Production claim. The two prototypes are standalone proofs; visor also ships an opt-in capability evaluator aligned with capability-delta-receipts. The authority-graph is not in the proxy.
+mcp-visor’s `--client-id` is an operator-supplied string and is not authenticated. This project issues a verified actor chain and a visor-gateway that derives `--client-id` and `--session-id` from that chain. `visor-session` is the supported path that starts mcp-visor with those values; typing the flags by hand is still spoofable. See [docs/visor-integration.md](docs/visor-integration.md) and [docs/deploy.md](docs/deploy.md). v1.0.0 is operator-ready, not a Production claim. The two prototypes are standalone proofs; visor also ships an opt-in capability evaluator aligned with capability-delta-receipts. The authority-graph is not in the proxy.
 
 ---
 
@@ -125,7 +125,7 @@ CLI: `serve`, `visor-gateway`, `visor-session`, `registry lint`, `token inspect|
 - **v0.7 incident reconstruction:** `trace -audit` verifies the STS/gateway hash chain (not a MAC) and looks up hops by `txn` or minted `jti` from verified records. Key-compromise procedures are in [runbooks](docs/runbooks.md). Not Production.
 - **v0.8 visor-session:** the supported path that starts mcp-visor with `-client-id` / `-session-id` taken only from a visor-gateway identity-only mapping. Extra visor args cannot set those flags. Typing `mcp-visor serve -client-id …` by hand is still spoofable. Not Production.
 - **v0.9 DPoP nonce:** visor-gateway requires RFC 9449 `use_dpop_nonce`. Nonces are unguessable, single-use, and process-local. visor-session and the A2A tripper retry once. Not Production (STS exchange is still `actor_token`).
-- **v1.0 operator-ready:** denylist, replay, DPoP nonce, visor-session, and runbooks. Residual PoP is explicit (in-flight nonce race, STS `actor_token`, no token-endpoint nonce, hand-start visor). Operator path is [deploy.md](docs/deploy.md). Not a Production claim.
+- **v1.0.0 operator-ready:** denylist, replay, DPoP nonce, visor-session, and runbooks. Residual PoP is explicit (in-flight nonce race, STS `actor_token`, no token-endpoint nonce, hand-start visor). Operator path is [deploy.md](docs/deploy.md). Not a Production claim.
 - **Not a host sandbox and not an MCP policy proxy**
 
 ## Documentation
