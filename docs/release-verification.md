@@ -9,13 +9,12 @@ keyless Sigstore OIDC):
 | `sbom.spdx.json` | Machine-readable SBOM of the release binaries (covered by `checksums.txt`) |
 | SLSA attestation | Build provenance, verifiable with `gh` |
 
-Verify a download (replace `vX.Y.Z` and `<version>` with the release tag and
-version, e.g. tag `v1.0.0` → version `1.0.0`):
+Verify a download (replace `vX.Y.Z` with the release tag):
 
 ```bash
 # verify only the binary you downloaded (checksums.txt lists every binary;
-# the end anchor keeps similarly-named entries out)
-ASSET=agent-identity-plane_<version>_linux_amd64
+# the end anchor keeps similarly-named entries out; the asset keeps the tag's v)
+ASSET=agent-identity-plane_vX.Y.Z_linux_amd64
 grep " $ASSET$" checksums.txt | sha256sum -c   # Linux
 grep " $ASSET$" checksums.txt | shasum -a 256 -c  # macOS
 gh attestation verify checksums.txt --repo themayursinha/agent-identity-plane
