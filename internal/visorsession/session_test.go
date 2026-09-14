@@ -317,6 +317,9 @@ func TestFetchRejectsPolicyFieldSubstitution(t *testing.T) {
 			m.JTI = "forged-jti"
 			m.VerifiedActor.TokenID = "forged-jti"
 		}},
+		{"workload_id", func(m *visoradapter.Mapping) {
+			m.VerifiedActor.WorkloadID = "forged-workload"
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

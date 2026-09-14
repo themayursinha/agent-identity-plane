@@ -64,6 +64,22 @@ func TestFromChainIncomplete(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUnsupportedVerificationMethod(t *testing.T) {
+	c := VerifiedActorContext{
+		Version:            ActorVersionV1,
+		PrincipalID:        "user1",
+		ActingAgent:        "coding-agent",
+		Transaction:        "txn-1",
+		ActorChain:         []ActorRef{{ID: "user1"}, {ID: "coding-agent"}},
+		Scopes:             []string{"write"},
+		ExpiresAt:          time.Date(2026, 5, 21, 13, 0, 0, 0, time.UTC),
+		VerificationMethod: "none",
+	}
+	if err := c.Seal(); err == nil || !strings.Contains(err.Error(), "unsupported verification_method") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestEncodeContextRejectsOversized(t *testing.T) {
 	c := VerifiedActorContext{
 		Version:            ActorVersionV1,

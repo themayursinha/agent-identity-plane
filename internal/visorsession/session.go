@@ -294,6 +294,9 @@ func mappingAgreesWithToken(m visoradapter.Mapping, raw string) error {
 	if va.VerificationMethod != visoradapter.ActorVerificationSTSDpop {
 		return fmt.Errorf("%w: verification method does not match token", ErrMapping)
 	}
+	if strings.TrimSpace(va.WorkloadID) != "" {
+		return fmt.Errorf("%w: workload_id is unbound", ErrMapping)
+	}
 	return nil
 }
 

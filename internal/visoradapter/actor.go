@@ -14,8 +14,8 @@ import (
 const (
 	ActorVersionV1           = "1"
 	ActorVerificationSTSDpop = "sts+dpop"
-	// MaxActorJSONBytes is below typical Unix pipe capacity (64KiB) so
-	// visor-session can fill fd 3 before exec without blocking forever.
+	// MaxActorJSONBytes is an encode-time cap. Unix exec also fails closed
+	// if a non-blocking write cannot place the whole object in the pipe.
 	MaxActorJSONBytes = 32 << 10
 )
 
@@ -116,6 +116,9 @@ func (c VerifiedActorContext) ValidateStructure() error {
 	}
 	if strings.TrimSpace(c.VerificationMethod) == "" {
 		return fmt.Errorf("visoradapter: missing verification_method")
+	}
+	if c.VerificationMethod != ActorVerificationSTSDpop {
+		return fmt.Errorf("visoradapter: unsupported verification_method %q", c.VerificationMethod)
 	}
 	if len(c.ActorChain) == 0 {
 		return fmt.Errorf("visoradapter: empty actor_chain")
