@@ -1,11 +1,13 @@
 # mcp-visor integration
 
-mcp-visor decides whether a `tools/call` may proceed. Its caller identity today
-is the operator-supplied `--client-id` string, matched by optional
-`identities[]` allowlists. The threat model records that this value is not
-authenticated. Stdio attestation pins the MCP *server*, not the agent.
+mcp-visor decides whether a `tools/call` may proceed. Standalone Visor still
+accepts an operator-supplied `--client-id` string, matched by optional
+`identities[]` allowlists. That value is not authenticated. Stdio attestation
+pins the MCP *server*, not the agent.
 
-Agent Identity Plane fills that gap **without modifying mcp-visor**:
+Agent Identity Plane fills that gap by producing a `VerifiedActorContext`
+**only after** STS+DPoP verification and handing it to visor on a
+process-start file descriptor. The two repositories stay separate.
 
 1. Agents obtain a next-hop token from this STS (`aud` = the visor-gateway).
 2. `agent-identity-plane visor-gateway` verifies the Bearer token (JWKS
@@ -15,17 +17,29 @@ Agent Identity Plane fills that gap **without modifying mcp-visor**:
    - `--client-id` ← acting agent (`act.sub`). `-client-short-name` is
      opt-in and uses the last URI segment; that can collide across prefixes.
    - `--session-id` ← `txn`
+   - `verified_actor` ← sealed `VerifiedActorContext` (principal, acting
+     agent, hops, scopes, issuer/audience/token/expiry, proof thumbprint,
+     `sts+dpop`, `identity_snapshot_hash`)
 4. `-identity-only` returns that mapping as JSON and headers.
    `agent-identity-plane visor-session` POSTs to that endpoint with
-   DPoP (one retry on `use_dpop_nonce`) and starts `mcp-visor serve -client-id … -session-id …` with
-   **only** those returned values. Extra visor args cannot set identity
-   flags. visor stdio is not an HTTP server. Typing `mcp-visor serve
-   -client-id …` by hand is still spoofable.
+   DPoP (one retry on `use_dpop_nonce`) and starts
+   `mcp-visor serve -client-id … -session-id … -verified-actor-fd 3`.
+   The JSON object is written to a pipe, `dup2`'d onto fd 3, then visor
+   is `exec`'d. Extra visor args cannot set identity flags, including
+   `-verified-actor-fd`. visor stdio is not an HTTP server. Typing
+   `mcp-visor serve -client-id …` by hand is still spoofable.
 5. `-backend` reverse-proxies to an HTTP service (for example a
    streamable-HTTP MCP front) and overwrites `X-Visor-Client-Id` /
    `X-Visor-Session-Id` so a caller cannot spoof them.
 
 Do not spawn a visor process per HTTP request.
+
+Visor policy `settings.require_verified_actor: true` (or a tool
+`required_scopes` list) fails closed when that process-start context is
+missing, expired, or structurally invalid. H44 `lineage_require` remains an
+optional constraint over the session identity; it is not a third token
+format. Deny-before-relay is proven at visor's `interceptAndModify` gate
+(H50), not as a Phase 2 network-isolation topology.
 
 Division of labour:
 
@@ -36,24 +50,16 @@ Division of labour:
 | What authority could a delegation reach? | authority-graph-simulator |
 | Did a trajectory acquire stronger capability? | capability-delta-receipts |
 
-## Proposed later seam (not implemented here)
+## Rejected transports
 
-A future mcp-visor PR could replace spoofable `--client-id` with an in-proxy
-token gate:
+These are not the Phase 1 seam and must not be added later as a way for the
+MCP client or model to populate identity:
 
-- New flag `-identity-jwks` / `-identity-issuer` / `-identity-audience`
-- On each `tools/call`, verify `Authorization: Bearer` or `DPoP` (or a JSON-RPC param)
-  and set `ClientID` from `act.sub` and session id from `txn`
-- Optional `lineage_require` tool rule can read typed lineage fields that the
-  adapter already emits (`principal`, `acting_agent`, `txn`)
-- Audit `lineage` object on allow/deny, without changing the hash-chain core
-
-Until that lands, visor-gateway is the enforcement point that makes visor
-identity policy meaningful, and `visor-session` is the supported path
-that starts visor with that mapping. Only a verified chain that is not
-denylisted and that presents a valid DPoP proof produces the
-`--client-id` / `--session-id` visor-session passes to visor.
-The operator copy-paste is [deploy.md](deploy.md).
+- MCP `tools/call` arguments / `_meta` / `_verified_actor`
+- In-proxy JWT or DPoP on every `tools/call` (the former “proposed later seam”)
+- Environment variables
+- A path the agent can write
+- A stdin preamble (`visor-session` `exec`s visor, so stdin **is** the MCP client stream)
 
 ## Mapping example
 
@@ -77,9 +83,10 @@ agent-identity-plane visor-session \
 That execs:
 
 ```text
-mcp-visor serve -client-id spiffe://example.test/agent/investigation -session-id txn-abc -policy policy.yaml
+mcp-visor serve -client-id spiffe://example.test/agent/investigation -session-id txn-abc -verified-actor-fd 3 -policy policy.yaml
 ```
 
 `-client-short-name` is opt-in (`-client-id investigation`). Last-segment
 names are not unique across URI prefixes, so visor `identities[]` must
-be written for the identifier the gateway actually emits.
+be written for the identifier the gateway actually emits. The verified
+context on fd 3 still carries the full acting-agent URI.

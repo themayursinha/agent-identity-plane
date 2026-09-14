@@ -137,7 +137,8 @@ are required and must not alias `-jwks`. Use `-identity-only` plus
 `agent-identity-plane visor-session` is the supported authentic start
 for mcp-visor. It POSTs to visor-gateway with DPoP and execs visor
 using only the returned mapping. Extra arguments after `--` are visor
-policy flags; they cannot set `-client-id` or `-session-id`.
+policy flags; they cannot set `-client-id`, `-session-id`, or
+`-verified-actor-fd`.
 
 ```bash
 agent-identity-plane visor-session \

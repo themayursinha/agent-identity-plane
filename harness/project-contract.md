@@ -65,7 +65,8 @@ DPoP nonce (AI22). JWKS URLs must be
 once on `use_dpop_nonce`, accepts
 only a complete identity-only mapping (`application/vnd.aip.visor-mapping+json`
 with matching `X-Visor-*` headers), and execs `mcp-visor serve` with
-`-client-id` / `-session-id` from that mapping. Extra visor arguments
+`-client-id` / `-session-id` / `-verified-actor-fd 3` from that mapping
+(the sealed context is written to fd 3, not argv). Extra visor arguments
 cannot set those flags. Gateway URLs follow the JWKS policy (`https`,
 or loopback `http`; no query or fragment). Redirects are not followed. `-dpop-key` is a 0600 key
 file. Hand-starting visor with a typed `--client-id` is still

@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/themayursinha/agent-identity-plane/internal/visoradapter"
 	"github.com/themayursinha/agent-identity-plane/internal/visorsession"
 )
 
@@ -53,5 +54,9 @@ func cmdVisorSession(args []string) error {
 		fmt.Println(visorsession.FormatArgv(name, argv))
 		return nil
 	}
-	return execVisor(name, argv)
+	raw, err := visoradapter.EncodeContext(m.VerifiedActor)
+	if err != nil {
+		return err
+	}
+	return execVisor(name, argv, raw)
 }

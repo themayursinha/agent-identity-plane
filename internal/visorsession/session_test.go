@@ -51,12 +51,30 @@ func identityGateway(t *testing.T, w *scenario.World) *httptest.Server {
 }
 
 func completeMapping() visoradapter.Mapping {
-	return visoradapter.Mapping{
+	m := visoradapter.Mapping{
 		ClientID:    "spiffe://example.test/agent/investigation",
 		SessionID:   "txn-abc",
 		Principal:   "user1",
 		ActingAgent: "spiffe://example.test/agent/investigation",
+		Hops:        []string{"user1", "spiffe://example.test/agent/oncall", "spiffe://example.test/agent/investigation"},
+		Scope:       "mcp:github:pr",
+		JTI:         "jti-abc",
 	}
+	m.VerifiedActor = visoradapter.VerifiedActorContext{
+		Version:            visoradapter.ActorVersionV1,
+		PrincipalID:        m.Principal,
+		ActingAgent:        m.ActingAgent,
+		Transaction:        m.SessionID,
+		ActorChain:         []visoradapter.ActorRef{{ID: "user1"}, {ID: "spiffe://example.test/agent/oncall"}, {ID: m.ActingAgent}},
+		Scopes:             []string{"mcp:github:pr"},
+		Issuer:             "https://sts.example.test",
+		Audience:           "https://visor-gateway.example.test",
+		TokenID:            m.JTI,
+		ExpiresAt:          time.Date(2026, 5, 21, 13, 0, 0, 0, time.UTC),
+		VerificationMethod: visoradapter.ActorVerificationSTSDpop,
+	}
+	_ = m.VerifiedActor.Seal()
+	return m
 }
 
 func TestFetchIdentityOnlyMapping(t *testing.T) {
@@ -93,7 +111,7 @@ func TestFetchIdentityOnlyMapping(t *testing.T) {
 		t.Fatalf("bin %s", name)
 	}
 	got := visorsession.FormatArgv(name, args)
-	want := "mcp-visor serve -client-id " + m.ClientID + " -session-id " + m.SessionID + " -policy policy.yaml"
+	want := "mcp-visor serve -client-id " + m.ClientID + " -session-id " + m.SessionID + " -verified-actor-fd 3 -policy policy.yaml"
 	if got != want {
 		t.Fatalf("argv %q want %q", got, want)
 	}
@@ -135,6 +153,9 @@ func TestCommandRejectsIdentityFlags(t *testing.T) {
 		{"-session-id", "spoofed"},
 		{"--session-id=spoofed"},
 		{"-policy", "p.yaml", "-client-id", "spoofed"},
+		{"-verified-actor-fd", "4"},
+		{"--verified-actor-fd=9"},
+		{"-verified-actor-file", "/tmp/actor.json"},
 	}
 	for _, extra := range cases {
 		_, _, err := visorsession.Command("mcp-visor", m, extra)
@@ -391,7 +412,7 @@ func TestCommandThenStubVisor(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(got)), "\n")
-	want := []string{"serve", "-client-id", m.ClientID, "-session-id", m.SessionID, "-policy", "policy.yaml"}
+	want := []string{"serve", "-client-id", m.ClientID, "-session-id", m.SessionID, "-verified-actor-fd", "3", "-policy", "policy.yaml"}
 	if len(lines) != len(want) {
 		t.Fatalf("argv %q", got)
 	}

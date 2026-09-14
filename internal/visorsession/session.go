@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +28,9 @@ const (
 	// AccessTokenEnv is the optional STS token source for visor-session.
 	// It is stripped from the visor child environment.
 	AccessTokenEnv = "AIP_ACCESS_TOKEN"
+	// ActorFD is the process-start descriptor visor reads for
+	// VerifiedActorContext. stdin/stdout/stderr stay 0/1/2.
+	ActorFD = 3
 )
 
 var (
@@ -34,7 +38,7 @@ var (
 	// (or loopback http), or includes a query or fragment.
 	ErrGatewayURL = errors.New("visorsession: gateway url must be https or loopback http, without query or fragment")
 	// ErrIdentityArgs is returned when extra visor arguments try to set
-	// -client-id or -session-id.
+	// -client-id, -session-id, or the verified-actor fd/file.
 	ErrIdentityArgs = errors.New("visorsession: visor identity flags are set only from visor-gateway")
 	// ErrMapping is returned when the gateway response is not a complete mapping.
 	ErrMapping = errors.New("visorsession: gateway mapping is incomplete")
@@ -203,7 +207,10 @@ func RejectIdentityArgs(extra []string) error {
 	for _, a := range extra {
 		name, _, _ := strings.Cut(a, "=")
 		switch name {
-		case "-client-id", "--client-id", "-session-id", "--session-id":
+		case "-client-id", "--client-id", "-session-id", "--session-id",
+			"-verified-actor-fd", "--verified-actor-fd",
+			"-verified-actor-file", "--verified-actor-file",
+			"-verified-actor", "--verified-actor":
 			return fmt.Errorf("%w: %s", ErrIdentityArgs, a)
 		}
 	}
@@ -211,8 +218,8 @@ func RejectIdentityArgs(extra []string) error {
 }
 
 // Command returns visor-bin and argv: serve -client-id <mapping>
-// -session-id <mapping> plus extra policy flags. Extra may not set
-// identity flags. Mapping must be Complete.
+// -session-id <mapping> -verified-actor-fd 3 plus extra policy flags.
+// Extra may not set identity flags. Mapping must be Complete.
 func Command(visorBin string, m visoradapter.Mapping, extra []string) (string, []string, error) {
 	if strings.TrimSpace(visorBin) == "" {
 		return "", nil, fmt.Errorf("visorsession: visor-bin required")
@@ -223,7 +230,12 @@ func Command(visorBin string, m visoradapter.Mapping, extra []string) (string, [
 	if err := RejectIdentityArgs(extra); err != nil {
 		return "", nil, err
 	}
-	args := []string{"serve", "-client-id", m.ClientID, "-session-id", m.SessionID}
+	args := []string{
+		"serve",
+		"-client-id", m.ClientID,
+		"-session-id", m.SessionID,
+		"-verified-actor-fd", strconv.Itoa(ActorFD),
+	}
 	args = append(args, extra...)
 	return visorBin, args, nil
 }
@@ -247,6 +259,9 @@ func mappingAgreesWithToken(m visoradapter.Mapping, raw string) error {
 	}
 	if m.Principal != c.Sub || m.ActingAgent != actor {
 		return fmt.Errorf("%w: actor chain does not match token", ErrMapping)
+	}
+	if m.VerifiedActor.PrincipalID != c.Sub || m.VerifiedActor.ActingAgent != actor || m.VerifiedActor.Transaction != c.Txn {
+		return fmt.Errorf("%w: verified actor does not match token", ErrMapping)
 	}
 	if m.ClientID != actor && m.ClientID != lastSegment(actor) {
 		return fmt.Errorf("%w: client id does not match token", ErrMapping)

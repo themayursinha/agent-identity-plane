@@ -2,6 +2,7 @@ package visoradapter
 
 import (
 	"testing"
+	"time"
 
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
@@ -15,6 +16,9 @@ func TestFromChain(t *testing.T) {
 		JTI:       "jti-1",
 		Scope:     "mcp:github:pr",
 		Depth:     2,
+		Issuer:    "https://sts.example.test",
+		Audience:  "https://visor-gateway.example.test",
+		Expires:   time.Date(2026, 5, 21, 13, 0, 0, 0, time.UTC),
 	}
 	m := FromChain(c, Options{})
 	if m.ClientID != c.Actor || m.SessionID != "txn-1" || m.JTI != "jti-1" {
@@ -22,6 +26,15 @@ func TestFromChain(t *testing.T) {
 	}
 	if err := m.Complete(); err != nil {
 		t.Fatal(err)
+	}
+	if err := m.VerifiedActor.ValidateStructure(); err != nil {
+		t.Fatal(err)
+	}
+	if m.VerifiedActor.PrincipalID != "user1" || m.VerifiedActor.ActingAgent != c.Actor {
+		t.Fatalf("verified actor %+v", m.VerifiedActor)
+	}
+	if !m.VerifiedActor.ExpiresAt.Equal(c.Expires) {
+		t.Fatalf("expires %v", m.VerifiedActor.ExpiresAt)
 	}
 	short := FromChain(c, Options{ShortName: true})
 	if short.ClientID != "investigation" {
