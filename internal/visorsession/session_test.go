@@ -266,6 +266,101 @@ func TestFetchRejectsMappingDisagreeingWithToken(t *testing.T) {
 	}
 }
 
+func mappingFromInvestToken(t *testing.T) (visoradapter.Mapping, string, *scenario.World) {
+	t.Helper()
+	w := testWorld(t)
+	_, tok, err := w.HappyPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	chain, err := w.Verifier.Verify(tok, scenario.Gateway)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return visoradapter.FromChain(chain, visoradapter.Options{}), tok, w
+}
+
+func serveMapping(t *testing.T, m visoradapter.Mapping) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", visoradapter.MappingContentType)
+		w.Header().Set(visoradapter.HeaderClientID, m.ClientID)
+		w.Header().Set(visoradapter.HeaderSessionID, m.SessionID)
+		_ = json.NewEncoder(w).Encode(m)
+	}))
+}
+
+func TestFetchRejectsPolicyFieldSubstitution(t *testing.T) {
+	base, tok, w := mappingFromInvestToken(t)
+	cases := []struct {
+		name string
+		mut  func(*visoradapter.Mapping)
+	}{
+		{"broader scopes", func(m *visoradapter.Mapping) {
+			m.Scope += " secret:exfil"
+			m.VerifiedActor.Scopes = append(append([]string{}, m.VerifiedActor.Scopes...), "secret:exfil")
+		}},
+		{"extra hop", func(m *visoradapter.Mapping) {
+			forged := "spiffe://example.test/agent/forged"
+			m.Hops = append(append([]string{}, m.Hops[:1]...), append([]string{forged}, m.Hops[1:]...)...)
+			m.VerifiedActor.ActorChain = append([]visoradapter.ActorRef{{ID: m.Hops[0]}, {ID: forged}}, m.VerifiedActor.ActorChain[1:]...)
+		}},
+		{"future expiry", func(m *visoradapter.Mapping) {
+			m.VerifiedActor.ExpiresAt = m.VerifiedActor.ExpiresAt.Add(24 * time.Hour)
+		}},
+		{"jkt", func(m *visoradapter.Mapping) {
+			m.VerifiedActor.ProofKeyThumbprint = strings.Repeat("ab", 32)
+		}},
+		{"issuer", func(m *visoradapter.Mapping) { m.VerifiedActor.Issuer = "https://evil.test" }},
+		{"audience", func(m *visoradapter.Mapping) { m.VerifiedActor.Audience = "https://evil.test" }},
+		{"jti", func(m *visoradapter.Mapping) {
+			m.JTI = "forged-jti"
+			m.VerifiedActor.TokenID = "forged-jti"
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := base
+			m.Hops = append([]string{}, base.Hops...)
+			m.VerifiedActor.Scopes = append([]string{}, base.VerifiedActor.Scopes...)
+			m.VerifiedActor.ActorChain = append([]visoradapter.ActorRef{}, base.VerifiedActor.ActorChain...)
+			tc.mut(&m)
+			if err := m.VerifiedActor.Seal(); err != nil {
+				t.Fatal(err)
+			}
+			ts := serveMapping(t, m)
+			t.Cleanup(ts.Close)
+			_, err := visorsession.Fetch(context.Background(), visorsession.Request{
+				GatewayURL: ts.URL + "/session",
+				Token:      tok,
+				ProofKey:   w.WL[scenario.WLInvest],
+				Now:        func() time.Time { return w.Now },
+			})
+			if !errors.Is(err, visorsession.ErrMapping) {
+				t.Fatalf("got %v", err)
+			}
+		})
+	}
+}
+
+func TestFetchAcceptsMappingBoundToToken(t *testing.T) {
+	m, tok, w := mappingFromInvestToken(t)
+	ts := serveMapping(t, m)
+	t.Cleanup(ts.Close)
+	got, err := visorsession.Fetch(context.Background(), visorsession.Request{
+		GatewayURL: ts.URL + "/session",
+		Token:      tok,
+		ProofKey:   w.WL[scenario.WLInvest],
+		Now:        func() time.Time { return w.Now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.VerifiedActor.TokenID != m.VerifiedActor.TokenID || got.Scope != m.Scope {
+		t.Fatalf("got %+v", got)
+	}
+}
+
 func TestFetchRejectsOversizedBody(t *testing.T) {
 	kf, err := token.GenerateEd25519("wl")
 	if err != nil {

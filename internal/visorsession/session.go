@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -260,13 +261,53 @@ func mappingAgreesWithToken(m visoradapter.Mapping, raw string) error {
 	if m.Principal != c.Sub || m.ActingAgent != actor {
 		return fmt.Errorf("%w: actor chain does not match token", ErrMapping)
 	}
-	if m.VerifiedActor.PrincipalID != c.Sub || m.VerifiedActor.ActingAgent != actor || m.VerifiedActor.Transaction != c.Txn {
+	va := m.VerifiedActor
+	if va.PrincipalID != c.Sub || va.ActingAgent != actor || va.Transaction != c.Txn {
 		return fmt.Errorf("%w: verified actor does not match token", ErrMapping)
 	}
 	if m.ClientID != actor && m.ClientID != lastSegment(actor) {
 		return fmt.Errorf("%w: client id does not match token", ErrMapping)
 	}
+	hops := append([]string{c.Sub}, c.ActorSubs()...)
+	if !slices.Equal(m.Hops, hops) || !slices.Equal(actorChainIDs(va.ActorChain), hops) {
+		return fmt.Errorf("%w: hops do not match token", ErrMapping)
+	}
+	if !scopesMatchToken(m.Scope, c.Scope) || !scopesMatchToken(strings.Join(va.Scopes, " "), c.Scope) {
+		return fmt.Errorf("%w: scopes do not match token", ErrMapping)
+	}
+	if va.Issuer != c.Iss {
+		return fmt.Errorf("%w: issuer does not match token", ErrMapping)
+	}
+	aud, _ := c.Aud.Single()
+	if va.Audience != aud {
+		return fmt.Errorf("%w: audience does not match token", ErrMapping)
+	}
+	if va.TokenID != c.Jti || m.JTI != c.Jti {
+		return fmt.Errorf("%w: token id does not match token", ErrMapping)
+	}
+	if va.ExpiresAt.UTC().Unix() != c.Exp {
+		return fmt.Errorf("%w: expiry does not match token", ErrMapping)
+	}
+	if va.ProofKeyThumbprint != c.ConfirmJKT() {
+		return fmt.Errorf("%w: proof thumbprint does not match token", ErrMapping)
+	}
+	if va.VerificationMethod != visoradapter.ActorVerificationSTSDpop {
+		return fmt.Errorf("%w: verification method does not match token", ErrMapping)
+	}
 	return nil
+}
+
+func actorChainIDs(chain []visoradapter.ActorRef) []string {
+	out := make([]string, len(chain))
+	for i, hop := range chain {
+		out[i] = hop.ID
+	}
+	return out
+}
+
+func scopesMatchToken(got, want string) bool {
+	gs, ws := token.ScopeSet(got), token.ScopeSet(want)
+	return token.Subset(gs, ws) && token.Subset(ws, gs)
 }
 
 func lastSegment(id string) string {
