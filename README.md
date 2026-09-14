@@ -19,7 +19,7 @@ The design composes RFC 8693, WIMSE identifiers, and the AIMS (`draft-klrc-aiage
 
 | Repo | Question it answers | Status |
 |---|---|---|
-| [**mcp-visor**](https://github.com/themayursinha/mcp-visor) | What may an agent *do*? (runtime policy at the MCP `tools/call` boundary) | Production |
+| [**mcp-visor**](https://github.com/themayursinha/mcp-visor) | What may an agent *do*? (runtime policy at the MCP `tools/call` boundary) | **Hardened OSS** |
 | [**agent-identity-plane**](https://github.com/themayursinha/agent-identity-plane) | *Who* is acting, for whom, through which chain? (identity + provenance) | **v1.0.0** |
 | [**authority-graph-simulator**](https://github.com/themayursinha/authority-graph-simulator) | What authority can an agent *reach*? (counterfactual delegation analysis) | Prototype |
 | [**capability-delta-receipts**](https://github.com/themayursinha/capability-delta-receipts) | What capability can an agent *acquire*? (trajectory-level capability accounting) | Prototype |
@@ -130,7 +130,7 @@ CLI: `serve`, `visor-gateway`, `visor-session`, `registry lint`, `token inspect|
 
 ## Documentation
 
-[Architecture](docs/architecture.md) · [Token profile](docs/token-profile.md) · [Registry model](docs/registry-model.md) · [Threat model](docs/threat-model.md) · [Standards alignment](docs/standards-alignment.md) · [Visor integration](docs/visor-integration.md) · [Operations](docs/operations.md) · [Deploy](docs/deploy.md) · [Runbooks](docs/runbooks.md)
+[Architecture](docs/architecture.md) · [Token profile](docs/token-profile.md) · [Registry model](docs/registry-model.md) · [Threat model](docs/threat-model.md) · [Standards alignment](docs/standards-alignment.md) · [Visor integration](docs/visor-integration.md) · [Operations](docs/operations.md) · [Deploy](docs/deploy.md) · [Runbooks](docs/runbooks.md) · [Compatibility](https://github.com/themayursinha/mcp-visor/blob/main/docs/compatibility.md)
 
 ## Development
 
