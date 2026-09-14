@@ -285,7 +285,7 @@ func mappingAgreesWithToken(m visoradapter.Mapping, raw string) error {
 	if va.TokenID != c.Jti || m.JTI != c.Jti {
 		return fmt.Errorf("%w: token id does not match token", ErrMapping)
 	}
-	if va.ExpiresAt.UTC().Unix() != c.Exp {
+	if !va.ExpiresAt.UTC().Equal(time.Unix(c.Exp, 0).UTC()) {
 		return fmt.Errorf("%w: expiry does not match token", ErrMapping)
 	}
 	if va.ProofKeyThumbprint != c.ConfirmJKT() {

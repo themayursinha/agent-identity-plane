@@ -308,6 +308,9 @@ func TestFetchRejectsPolicyFieldSubstitution(t *testing.T) {
 		{"future expiry", func(m *visoradapter.Mapping) {
 			m.VerifiedActor.ExpiresAt = m.VerifiedActor.ExpiresAt.Add(24 * time.Hour)
 		}},
+		{"same-second later expiry", func(m *visoradapter.Mapping) {
+			m.VerifiedActor.ExpiresAt = m.VerifiedActor.ExpiresAt.Add(time.Millisecond)
+		}},
 		{"jkt", func(m *visoradapter.Mapping) {
 			m.VerifiedActor.ProofKeyThumbprint = strings.Repeat("ab", 32)
 		}},
