@@ -31,7 +31,7 @@ This document is an engineering threat model, not a compliance claim.
 | `alg=none` / alg confusion | Header alg must match JWK type | verify fail |
 | Missing attribution | Audit record before HTTP response (AI8) | n/a |
 | Spoofed visor `--client-id` at the gateway | visor-gateway verifies Bearer/DPoP and overwrites `X-Visor-*` after hop-by-hop strip (AI16) | `missing_bearer` / `invalid_token` / `incomplete_chain` |
-| Typed visor `--client-id` bypass | visor-session starts visor only with a complete visor-gateway mapping; extra args cannot set identity flags (AI21) | process error |
+| Typed visor `--client-id` bypass | visor-session starts visor only with a complete visor-gateway mapping including sealed `VerifiedActorContext` on fd 3; extra args cannot set identity flags (AI21, AI24) | process error |
 | Stolen minted JWT presented at visor-gateway | DPoP bound to `cnf.jkt` of the actor-token key (AI19) | `missing_dpop` / `invalid_dpop_proof` / `replayed_dpop` / `missing_cnf` |
 | Unspecified bind | `ValidateBind` (AI11) | process error |
 | Cleartext or empty live JWT-SVID JWKS | URL policy + empty-JWKS fail-closed (AI17) | process error / `/readyz` 503 |

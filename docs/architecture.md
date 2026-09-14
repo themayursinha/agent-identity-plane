@@ -10,7 +10,7 @@ user --session--> oncall-agent --RFC 8693--> STS --JWT aud=investigation--> inve
                                                                       |
                                                                       +--> Agent Registry
 investigation-agent --RFC 8693--> STS --JWT aud=mcp-gateway--> visor-gateway
-visor-gateway --identity-only JSON--> visor-session --mcp-visor serve -client-id / -session-id--> mcp-visor --policy--> MCP server
+visor-gateway --identity-only JSON--> visor-session --mcp-visor serve -client-id / -session-id / -verified-actor-fd 3--> mcp-visor --policy--> MCP server
 ```
 
 ## Packages
@@ -158,7 +158,8 @@ Production.
 
 `visor-session` POSTs the access token to visor-gateway (`-identity-only`)
 with a DPoP proof and starts `mcp-visor serve` using only the returned
-`-client-id` / `-session-id`. The identity-only response uses a dedicated
+`-client-id` / `-session-id` and `-verified-actor-fd 3` (the sealed
+`VerifiedActorContext` is written to that fd, not to argv). The identity-only response uses a dedicated
 JSON media type; a `-backend` reverse-proxy body is not accepted. Extra visor arguments cannot set those
 flags. The gateway URL uses the same policy as JWKS (`https`, or
 loopback `http`; no query or fragment). Redirects are not followed.

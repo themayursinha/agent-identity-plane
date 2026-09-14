@@ -7,17 +7,18 @@ import (
 	"github.com/themayursinha/agent-identity-plane/internal/verify"
 )
 
-// Mapping is what mcp-visor can consume today (--client-id, --session-id)
-// plus the typed lineage fields planned for lineage_require.
+// Mapping is what visor-session consumes: spoofable-compat --client-id /
+// --session-id plus the sealed VerifiedActorContext written to fd 3.
 type Mapping struct {
-	ClientID    string            `json:"client_id"`
-	SessionID   string            `json:"session_id"`
-	Principal   string            `json:"principal"`
-	ActingAgent string            `json:"acting_agent"`
-	Hops        []string          `json:"hops"`
-	Scope       string            `json:"scope"`
-	JTI         string            `json:"jti,omitempty"`
-	Lineage     map[string]string `json:"lineage"`
+	ClientID      string               `json:"client_id"`
+	SessionID     string               `json:"session_id"`
+	Principal     string               `json:"principal"`
+	ActingAgent   string               `json:"acting_agent"`
+	Hops          []string             `json:"hops"`
+	Scope         string               `json:"scope"`
+	JTI           string               `json:"jti,omitempty"`
+	Lineage       map[string]string    `json:"lineage"`
+	VerifiedActor VerifiedActorContext `json:"verified_actor"`
 }
 
 const (
@@ -47,16 +48,22 @@ func FromChain(c verify.ActorChain, opt Options) Mapping {
 		"txn":          c.Txn,
 		"scope":        c.Scope,
 	}
-	return Mapping{
-		ClientID:    client,
-		SessionID:   c.Txn,
-		Principal:   c.Principal,
-		ActingAgent: c.Actor,
-		Hops:        append([]string{}, c.Hops...),
-		Scope:       c.Scope,
-		JTI:         c.JTI,
-		Lineage:     lin,
+	actor, err := contextFromChain(c)
+	m := Mapping{
+		ClientID:      client,
+		SessionID:     c.Txn,
+		Principal:     c.Principal,
+		ActingAgent:   c.Actor,
+		Hops:          append([]string{}, c.Hops...),
+		Scope:         c.Scope,
+		JTI:           c.JTI,
+		Lineage:       lin,
+		VerifiedActor: actor,
 	}
+	if err != nil {
+		m.VerifiedActor = VerifiedActorContext{}
+	}
+	return m
 }
 
 // Complete reports whether the mapping has the visor identity fields a PEP
@@ -70,6 +77,9 @@ func (m Mapping) Complete() error {
 	}
 	if strings.TrimSpace(m.Principal) == "" {
 		return fmt.Errorf("visoradapter: missing principal")
+	}
+	if err := m.VerifiedActor.ValidateStructure(); err != nil {
+		return fmt.Errorf("visoradapter: verified actor: %w", err)
 	}
 	return nil
 }

@@ -1,0 +1,21 @@
+{
+  "task_id": "T-AIP-010-verified-actor",
+  "invariant_ids": ["AI21", "AI24"],
+  "security_sensitive": false,
+  "security_problem": "mcp-visor --client-id is an operator string. If visor-session does not deliver a sealed VerifiedActorContext on a process-start fd, or if extra args can point visor at another fd/file, a caller can spoof identity.",
+  "required_behavior": "FromChain produces a sealed verified_actor after verification. Command argv is serve -client-id -session-id -verified-actor-fd 3 plus extra policy flags. Extra args cannot set -verified-actor-fd or file aliases. Complete() requires the sealed context. Unix exec writes the JSON to fd 3.",
+  "failure_behavior": "Incomplete mapping, missing sealed context, or extra identity flags are a process error and do not exec visor. tools/call fields are not a transport.",
+  "max_attempts": 3,
+  "required_commands": [
+    {
+      "name": "target_test",
+      "expect": "pass",
+      "argv": ["go", "test", "./internal/visoradapter/...", "./internal/visorsession/...", "./cmd/agent-identity-plane/...", "-count", "1"]
+    },
+    {
+      "name": "harness",
+      "expect": "pass",
+      "argv": ["harness/check.sh"]
+    }
+  ]
+}

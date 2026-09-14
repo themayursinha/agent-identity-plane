@@ -207,14 +207,14 @@ URL uses the same policy as JWKS (`https`, or loopback `http`; TLS
 1.2+; 1MiB body; query and fragment rejected so DPoP `htu` matches).
 HTTP redirects are not followed (DPoP `htm`/`htu` stay bound to the
 configured URL). Only a complete mapping (`client_id`, `session_id`, acting agent,
-principal) from that identity-only response is passed to `mcp-visor serve`.
+principal, and a sealed `verified_actor`) from that identity-only response is passed to `mcp-visor serve`.
 The response must be `application/vnd.aip.visor-mapping+json` with
 `X-Visor-Client-Id` / `X-Visor-Session-Id` equal to the JSON, and those
 fields must match the access token (`txn`, `sub`, `act.sub`). visor-gateway
 `-backend` strips that media type and those headers from proxied
 responses. Extra
 visor arguments cannot set `-client-id`, `--client-id`, `-session-id`,
-or `--session-id` (including `=` forms). `-dpop-key` is a 0600 Ed25519
+`--session-id`, `-verified-actor-fd`, or file aliases (including `=` forms). `-dpop-key` is a 0600 Ed25519
 key or keyring file. `-print` prints argv and does not exec. Starting
 `mcp-visor` by hand with a typed `--client-id` is still spoofable; this
 command is the supported authentic path. On Unix, `visor-session`
@@ -252,4 +252,14 @@ is not left with an empty `$JWT`. Each localkeys verifying JWK carries
 `sub`; Attest requires it to match the actor token subject. SPIFFE
 JWT-SVID JWKS keys are issuer keys and do not use that binding. This
 version is operator-ready. It is not a Production claim.
+
+## AI24 — visor-session delivers VerifiedActorContext on fd 3
+
+A complete visor-gateway mapping includes a sealed `verified_actor` object
+produced only after STS+DPoP verification. `visor-session` execs
+`mcp-visor serve -client-id … -session-id … -verified-actor-fd 3` and
+writes that JSON to a pipe dup2'd onto fd 3. Extra visor arguments cannot
+set `-verified-actor-fd` or file aliases. MCP `tools/call` fields are
+never a source of this type. Hand-starting visor without that fd remains
+spoofable (Mode A). This is not a Production claim.
 

@@ -24,7 +24,7 @@ The design composes RFC 8693, WIMSE identifiers, and the AIMS (`draft-klrc-aiage
 | [**authority-graph-simulator**](https://github.com/themayursinha/authority-graph-simulator) | What authority can an agent *reach*? (counterfactual delegation analysis) | Prototype |
 | [**capability-delta-receipts**](https://github.com/themayursinha/capability-delta-receipts) | What capability can an agent *acquire*? (trajectory-level capability accounting) | Prototype |
 
-mcp-visor’s `--client-id` is an operator-supplied string and is not authenticated. This project issues a verified actor chain and a visor-gateway that derives `--client-id` and `--session-id` from that chain. `visor-session` is the supported path that starts mcp-visor with those values; typing the flags by hand is still spoofable. See [docs/visor-integration.md](docs/visor-integration.md) and [docs/deploy.md](docs/deploy.md). v1.0.0 is operator-ready, not a Production claim. The two prototypes are standalone proofs; visor also ships an opt-in capability evaluator aligned with capability-delta-receipts. The authority-graph is not in the proxy.
+mcp-visor’s `--client-id` is an operator-supplied string and is not authenticated. This project issues a verified actor chain and a visor-gateway that derives `--client-id`, `--session-id`, and a sealed `VerifiedActorContext` from that chain. `visor-session` is the supported path that starts mcp-visor with those values and writes the context to fd 3; typing the flags by hand is still spoofable. See [docs/visor-integration.md](docs/visor-integration.md) and [docs/deploy.md](docs/deploy.md). v1.0.0 is operator-ready, not a Production claim. The two prototypes are standalone proofs; visor also ships an opt-in capability evaluator aligned with capability-delta-receipts. The authority-graph is not in the proxy.
 
 ---
 
@@ -90,6 +90,7 @@ contain STS, IdP, or workload private keys. To run `serve` /
 | AI21 | `visor-session` starts mcp-visor only with visor-gateway mapping identity |
 | AI22 | visor-gateway requires a server-issued DPoP nonce |
 | AI23 | visor-only operator path; residual PoP is explicit |
+| AI24 | `visor-session` delivers sealed `VerifiedActorContext` on fd 3 |
 
 ## Architecture
 
@@ -102,7 +103,7 @@ user --session--> oncall-agent --RFC 8693 exchange--> STS
                          |
                          | JWT aud=mcp-gateway
                          v
-                   visor-gateway --identity-only JSON--> visor-session --mcp-visor serve -client-id--> mcp-visor --policy--> MCP server
+                   visor-gateway --identity-only JSON--> visor-session --mcp-visor serve -client-id -verified-actor-fd 3--> mcp-visor --policy--> MCP server
 ```
 
 Core packages: `internal/token`, `internal/registry`, `internal/attest`, `internal/sts`, `internal/verify`, `internal/a2a`, `internal/audit`, `internal/visoradapter`, `internal/gateway`, `internal/denylist`, `internal/dpop`, `internal/visorsession`.
@@ -123,7 +124,7 @@ CLI: `serve`, `visor-gateway`, `visor-session`, `registry lint`, `token inspect|
 - **v0.5 agent denylist:** owned JSON of agent, workload, and principal IDs. Exact match. Enforced at mint and at visor-gateway (in-flight hops).
 - **v0.6 DPoP at visor-gateway:** minted tokens carry `cnf.jkt` of a workload-possessed key. visor-gateway requires a DPoP proof (`htm`/`htu`/`ath`/`jti`) whose JWK thumbprint matches, with durable proof-jti replay. Not Production (STS exchange is still actor_token).
 - **v0.7 incident reconstruction:** `trace -audit` verifies the STS/gateway hash chain (not a MAC) and looks up hops by `txn` or minted `jti` from verified records. Key-compromise procedures are in [runbooks](docs/runbooks.md). Not Production.
-- **v0.8 visor-session:** the supported path that starts mcp-visor with `-client-id` / `-session-id` taken only from a visor-gateway identity-only mapping. Extra visor args cannot set those flags. Typing `mcp-visor serve -client-id …` by hand is still spoofable. Not Production.
+- **v0.8 visor-session:** the supported path that starts mcp-visor with `-client-id` / `-session-id` taken only from a visor-gateway identity-only mapping, plus `-verified-actor-fd 3` carrying the sealed context. Extra visor args cannot set those flags. Typing `mcp-visor serve -client-id …` by hand is still spoofable. Not Production.
 - **v0.9 DPoP nonce:** visor-gateway requires RFC 9449 `use_dpop_nonce`. Nonces are unguessable, single-use, and process-local. visor-session and the A2A tripper retry once. Not Production (STS exchange is still `actor_token`).
 - **v1.0.0 operator-ready:** denylist, replay, DPoP nonce, visor-session, and runbooks. Residual PoP is explicit (in-flight nonce race, STS `actor_token`, no token-endpoint nonce, hand-start visor). Operator path is [deploy.md](docs/deploy.md). Not a Production claim.
 - **Not a host sandbox and not an MCP policy proxy**
