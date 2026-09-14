@@ -1,6 +1,7 @@
 package visoradapter
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -26,6 +27,13 @@ func TestFromChain(t *testing.T) {
 	}
 	if err := m.Complete(); err != nil {
 		t.Fatal(err)
+	}
+	raw, err := EncodeContext(m.VerifiedActor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) == 0 || len(raw) > MaxActorJSONBytes {
+		t.Fatalf("encoded size %d", len(raw))
 	}
 	if err := m.VerifiedActor.ValidateStructure(); err != nil {
 		t.Fatal(err)
@@ -53,5 +61,22 @@ func TestFromChainIncomplete(t *testing.T) {
 	m = FromChain(verify.ActorChain{Principal: "user1", Actor: "agent"}, Options{})
 	if err := m.Complete(); err == nil {
 		t.Fatal("empty session must be incomplete")
+	}
+}
+
+func TestEncodeContextRejectsOversized(t *testing.T) {
+	c := VerifiedActorContext{
+		Version:            ActorVersionV1,
+		PrincipalID:        "user1",
+		ActingAgent:        "coding-agent",
+		WorkloadID:         strings.Repeat("a", MaxActorJSONBytes),
+		Transaction:        "txn-1",
+		ActorChain:         []ActorRef{{ID: "user1"}, {ID: "coding-agent"}},
+		Scopes:             []string{"write"},
+		ExpiresAt:          time.Date(2026, 5, 21, 13, 0, 0, 0, time.UTC),
+		VerificationMethod: ActorVerificationSTSDpop,
+	}
+	if _, err := EncodeContext(c); err == nil {
+		t.Fatal("oversized context must fail closed before pipe write")
 	}
 }

@@ -14,6 +14,9 @@ import (
 const (
 	ActorVersionV1           = "1"
 	ActorVerificationSTSDpop = "sts+dpop"
+	// MaxActorJSONBytes is below typical Unix pipe capacity (64KiB) so
+	// visor-session can fill fd 3 before exec without blocking forever.
+	MaxActorJSONBytes = 32 << 10
 )
 
 // ActorRef is one hop in the verified actor chain (principal first, acting agent last).
@@ -137,7 +140,14 @@ func EncodeContext(c VerifiedActorContext) ([]byte, error) {
 	if err := c.Seal(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(c)
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > MaxActorJSONBytes {
+		return nil, fmt.Errorf("visoradapter: verified actor context exceeds %d bytes", MaxActorJSONBytes)
+	}
+	return raw, nil
 }
 
 func contextFromChain(c verify.ActorChain) (VerifiedActorContext, error) {

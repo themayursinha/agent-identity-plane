@@ -25,7 +25,8 @@ process-start file descriptor. The two repositories stay separate.
    DPoP (one retry on `use_dpop_nonce`) and starts
    `mcp-visor serve -client-id … -session-id … -verified-actor-fd 3`.
    The JSON object is written to a pipe, `dup2`'d onto fd 3, then visor
-   is `exec`'d. Extra visor args cannot set identity flags, including
+   is `exec`'d. The JSON is capped at 32KiB so the pre-exec pipe write
+   cannot block waiting for visor. Extra visor args cannot set identity flags, including
    `-verified-actor-fd`. visor stdio is not an HTTP server. Typing
    `mcp-visor serve -client-id …` by hand is still spoofable.
 5. `-backend` reverse-proxies to an HTTP service (for example a

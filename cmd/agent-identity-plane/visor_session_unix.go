@@ -8,12 +8,15 @@ import (
 	"os/exec"
 	"syscall"
 
+	"github.com/themayursinha/agent-identity-plane/internal/visoradapter"
 	"github.com/themayursinha/agent-identity-plane/internal/visorsession"
 )
 
 // execVisor replaces this process with mcp-visor so SIGTERM hits visor,
 // not a wrapper. The STS token is not in the child environment. actorJSON
-// is written to a pipe dup2'd onto fd 3 (CLOEXEC cleared).
+// is written to a pipe dup2'd onto fd 3 (CLOEXEC cleared). The payload is
+// capped below typical pipe capacity so this write cannot deadlock waiting
+// for visor to become the reader.
 func execVisor(name string, args []string, actorJSON []byte) error {
 	path, err := exec.LookPath(name)
 	if err != nil {
@@ -21,6 +24,9 @@ func execVisor(name string, args []string, actorJSON []byte) error {
 	}
 	if len(actorJSON) == 0 {
 		return fmt.Errorf("visor-session: verified actor context required")
+	}
+	if len(actorJSON) > visoradapter.MaxActorJSONBytes {
+		return fmt.Errorf("visor-session: verified actor context exceeds pipe-safe size")
 	}
 	r, w, err := os.Pipe()
 	if err != nil {
