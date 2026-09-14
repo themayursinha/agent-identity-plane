@@ -74,6 +74,9 @@ func (v *Verifier) Verify(raw, audience string) (ActorChain, error) {
 	if err := c.ValidateAudience(audience); err != nil {
 		return ch, err
 	}
+	if _, ok := c.Aud.Single(); !ok {
+		return ch, token.ErrAudience
+	}
 	if err := c.ValidateTime(v.now(), 0); err != nil {
 		return ch, err
 	}
@@ -87,7 +90,10 @@ func chainFromClaims(raw string, c token.Claims) ActorChain {
 	if c.Act != nil {
 		actor = c.Act.Sub
 	}
-	aud, _ := c.Aud.Single()
+	aud, ok := c.Aud.Single()
+	if !ok {
+		aud = ""
+	}
 	return ActorChain{
 		Principal: c.Sub,
 		Actor:     actor,

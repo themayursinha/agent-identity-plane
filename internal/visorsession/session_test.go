@@ -349,6 +349,39 @@ func TestFetchRejectsPolicyFieldSubstitution(t *testing.T) {
 	}
 }
 
+func TestFetchRejectsNonSingleAudienceToken(t *testing.T) {
+	base, tok, w := mappingFromInvestToken(t)
+	_, claims, _, err := token.ParseUnverified(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims.Aud = token.Audience{scenario.Gateway, "https://other.example"}
+	signer, err := token.SignerFromKeyFile(w.STSKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	multi, err := signer.SignClaims(claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := base
+	m.VerifiedActor.Audience = ""
+	if err := m.VerifiedActor.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	ts := serveMapping(t, m)
+	t.Cleanup(ts.Close)
+	_, err = visorsession.Fetch(context.Background(), visorsession.Request{
+		GatewayURL: ts.URL + "/session",
+		Token:      multi,
+		ProofKey:   w.WL[scenario.WLInvest],
+		Now:        func() time.Time { return w.Now },
+	})
+	if !errors.Is(err, visorsession.ErrMapping) {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestFetchAcceptsMappingBoundToToken(t *testing.T) {
 	m, tok, w := mappingFromInvestToken(t)
 	ts := serveMapping(t, m)

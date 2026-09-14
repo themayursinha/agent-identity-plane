@@ -278,8 +278,11 @@ func mappingAgreesWithToken(m visoradapter.Mapping, raw string) error {
 	if va.Issuer != c.Iss {
 		return fmt.Errorf("%w: issuer does not match token", ErrMapping)
 	}
-	aud, _ := c.Aud.Single()
-	if va.Audience != aud {
+	// v1 Audience is a single string. ValidateAudience is membership-only,
+	// so a token whose aud array also names another resource would otherwise
+	// compare as empty == empty after Single() returns false.
+	aud, ok := c.Aud.Single()
+	if !ok || va.Audience != aud {
 		return fmt.Errorf("%w: audience does not match token", ErrMapping)
 	}
 	if va.TokenID != c.Jti || m.JTI != c.Jti {
