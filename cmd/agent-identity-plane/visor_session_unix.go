@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"syscall"
 
 	"github.com/themayursinha/agent-identity-plane/internal/visoradapter"
@@ -48,10 +49,16 @@ func execVisor(name string, args []string, actorJSON []byte) error {
 	}
 	if rawFD != visorsession.ActorFD {
 		_ = r.Close()
+		r = nil
 	}
 	if _, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(visorsession.ActorFD), syscall.F_SETFD, 0); errno != 0 {
+		if r != nil {
+			_ = r.Close()
+		}
 		return errno
 	}
 	argv := append([]string{path}, args...)
-	return syscall.Exec(path, argv, visorsession.ChildEnv(os.Environ()))
+	err = syscall.Exec(path, argv, visorsession.ChildEnv(os.Environ()))
+	runtime.KeepAlive(r)
+	return err
 }
