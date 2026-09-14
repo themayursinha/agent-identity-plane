@@ -15,9 +15,9 @@ import (
 
 // execVisor replaces this process with mcp-visor so SIGTERM hits visor,
 // not a wrapper. The STS token is not in the child environment. actorJSON
-// is written to a pipe dup2'd onto fd 3 (CLOEXEC cleared). The payload is
-// capped below typical pipe capacity so this write cannot deadlock waiting
-// for visor to become the reader.
+// is written to a pipe dup2'd onto fd 3 (CLOEXEC cleared). The write is
+// non-blocking so a pipe smaller than the payload fails closed instead of
+// waiting for visor to become the reader.
 func execVisor(name string, args []string, actorJSON []byte) error {
 	path, err := exec.LookPath(name)
 	if err != nil {
@@ -33,7 +33,7 @@ func execVisor(name string, args []string, actorJSON []byte) error {
 	if err != nil {
 		return err
 	}
-	if _, err := w.Write(actorJSON); err != nil {
+	if err := writeActorPipe(int(w.Fd()), actorJSON); err != nil {
 		_ = r.Close()
 		_ = w.Close()
 		return err
@@ -61,4 +61,31 @@ func execVisor(name string, args []string, actorJSON []byte) error {
 	err = syscall.Exec(path, argv, visorsession.ChildEnv(os.Environ()))
 	runtime.KeepAlive(r)
 	return err
+}
+
+// writeActorPipe places the whole payload with write(2) in non-blocking
+// mode. A pipe that cannot accept the bytes without a reader fails closed
+// instead of blocking until exec.
+func writeActorPipe(fd int, actorJSON []byte) error {
+	if err := syscall.SetNonblock(fd, true); err != nil {
+		return err
+	}
+	wrote := 0
+	for wrote < len(actorJSON) {
+		n, err := syscall.Write(fd, actorJSON[wrote:])
+		if n > 0 {
+			wrote += n
+		}
+		if err == nil {
+			continue
+		}
+		if err == syscall.EINTR {
+			continue
+		}
+		if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
+			return fmt.Errorf("visor-session: verified actor context exceeds pipe capacity")
+		}
+		return err
+	}
+	return nil
 }
